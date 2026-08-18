@@ -1,0 +1,13 @@
+export const paths = {
+  home: '/',
+  signIn: '/signin',
+  signUp: '/signup',
+  callback: '/auth/callback',
+  connectedAccounts: '/connected-accounts',
+  connectAccount: '/connected-accounts/connect',
+  discover: '/discover',
+  publicationHistory: '/publication-history',
+  profile: '/profile',
+} as const
+
+export const POST_LOGIN_PATH = paths.connectedAccounts
