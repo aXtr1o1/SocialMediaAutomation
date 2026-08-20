@@ -50,7 +50,7 @@ export function AuthCallbackPage() {
     <AuthLayout className={authClasses.page}>
       <AuthCard className={`w-full max-w-[400px] ${authClasses.card}`} contentClassName="gap-3 text-center">
         <h1 className={authClasses.title}>{error ? 'Sign-in failed' : 'Signing you in...'}</h1>
-        <p className={authClasses.subtitle}>{error || 'Please wait while we finish Google sign-in.'}</p>
+        <p className={authClasses.subtitle}>{error || 'Please wait while we finish signing you in.'}</p>
       </AuthCard>
     </AuthLayout>
   )

@@ -8,7 +8,10 @@ import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { ConnectedAccountsPage } from './pages/app/ConnectedAccountsPage'
 import { ConnectAccountPage } from './pages/app/ConnectAccountPage'
 import { DiscoverPage } from './pages/app/DiscoverPage'
+import { ComposePostPage } from './pages/app/ComposePostPage'
+import { ReviewGenerationsPage } from './pages/app/ReviewGenerationsPage'
 import { PlaceholderPage } from './pages/app/PlaceholderPage'
+import { SourcesPage } from './pages/app/SourcesPage'
 import { ProfilePage } from './pages/app/ProfilePage'
 import { SignInPage } from './pages/SignInPage'
 import { SignUpPage } from './pages/SignUpPage'
@@ -47,6 +50,9 @@ export default function App() {
               <Route path={paths.connectedAccounts} element={<ConnectedAccountsPage />} />
               <Route path={paths.connectAccount} element={<ConnectAccountPage />} />
               <Route path={paths.discover} element={<DiscoverPage />} />
+              <Route path={paths.sources} element={<SourcesPage />} />
+              <Route path={paths.generationsCompose} element={<ComposePostPage />} />
+              <Route path={paths.generations} element={<ReviewGenerationsPage />} />
               <Route path={paths.profile} element={<ProfilePage />} />
               <Route
                 path={paths.publicationHistory}

@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { GoogleAuthButton } from '../components/ui/GoogleAuthButton'
 import { AuthCard } from '../components/layout/AuthCard'
 import { AuthLayout } from '../components/layout/AuthLayout'
@@ -13,11 +13,19 @@ import { signInWithEmail } from '../lib/auth'
 import { authClasses } from '../lib/authTheme'
 import { POST_LOGIN_PATH, paths } from '../lib/paths'
 
+type SignInLocationState = {
+  email?: string
+  notice?: string
+}
+
 export function SignInPage() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const location = useLocation()
+  const locationState = (location.state as SignInLocationState | null) ?? {}
+  const [email, setEmail] = useState(locationState.email ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [notice] = useState(locationState.notice ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const passwordVisibility = usePasswordVisibility()
 
@@ -88,6 +96,7 @@ export function SignInPage() {
           <Button className={authClasses.primaryButton} type="submit" disabled={isSubmitting}>
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </Button>
+          {notice ? <p className="-mt-3 text-center text-[13px] text-primary">{notice}</p> : null}
           {error ? <p className="-mt-3 text-center text-[13px] text-error">{error}</p> : null}
         </form>
 

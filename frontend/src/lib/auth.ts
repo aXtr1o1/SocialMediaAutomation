@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { apiFetch } from './api'
 import { paths } from './paths'
 
 export async function signInWithGoogle() {
@@ -41,6 +42,7 @@ export async function signUpWithEmail({
     email,
     password,
     options: {
+      emailRedirectTo: `${window.location.origin}${paths.callback}`,
       data: {
         first_name: firstName,
         last_name: lastName,
@@ -54,7 +56,15 @@ export async function signUpWithEmail({
     throw error
   }
 
+  if (data.user && (data.user.identities?.length ?? 0) === 0) {
+    throw new Error('An account with this email already exists. Sign in instead.')
+  }
+
   return data
+}
+
+export async function ensurePublicUserProfile() {
+  await apiFetch('/auth/me')
 }
 
 export async function signOut() {
@@ -90,6 +100,15 @@ export async function updateUserProfile({ firstName, lastName, username }: Updat
   if (error) {
     throw error
   }
+
+  await apiFetch('/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      first_name: trimmedFirstName,
+      last_name: trimmedLastName,
+      username: trimmedUsername,
+    }),
+  })
 
   return data.user
 }

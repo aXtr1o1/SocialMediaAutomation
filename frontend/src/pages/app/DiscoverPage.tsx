@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { DomainCard } from '../../components/discover/DomainCard'
 import { SubdomainGroup } from '../../components/discover/SubdomainGroup'
 import { MaterialIcon } from '../../components/ui/MaterialIcon'
 import { useDiscoverCatalog } from '../../hooks/useDiscoverCatalog'
+import { paths } from '../../lib/paths'
 
 export function DiscoverPage() {
+  const navigate = useNavigate()
   const { domains, subdomains, isLoading, error } = useDiscoverCatalog()
   const [selectedDomainId, setSelectedDomainId] = useState('')
   const [selectedSubdomainIds, setSelectedSubdomainIds] = useState<string[]>([])
@@ -42,6 +45,25 @@ export function DiscoverPage() {
   }
 
   const isSingleDomain = domains.length === 1
+  const canContinue = Boolean(selectedDomainId && selectedSubdomainIds.length)
+
+  function continueToSources() {
+    if (!canContinue) {
+      return
+    }
+
+    navigate(paths.sources, {
+      state: {
+        domainId: selectedDomainId,
+        subdomainIds: selectedSubdomainIds,
+        domainName: selectedDomain?.name ?? '',
+        subdomainNames: visibleSubdomains
+          .filter((item) => selectedSubdomainIds.includes(item.id))
+          .map((item) => item.name),
+        runId: crypto.randomUUID(),
+      },
+    })
+  }
 
   return (
     <div className="relative flex min-h-full w-full flex-col">
@@ -138,7 +160,9 @@ export function DiscoverPage() {
         <div className="mt-xl flex items-center justify-end border-t border-surface-variant py-md">
           <button
             type="button"
-            className="group relative flex h-9 items-center gap-2 overflow-hidden rounded bg-primary px-6 font-label-md text-label-md text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-md"
+            disabled={!canContinue}
+            onClick={continueToSources}
+            className="group relative flex h-9 items-center gap-2 overflow-hidden rounded bg-primary px-6 font-label-md text-label-md text-on-primary shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:pointer-events-none disabled:opacity-50"
           >
             <span className="relative z-10">Continue to Sources</span>
             <MaterialIcon

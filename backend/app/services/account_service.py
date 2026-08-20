@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
+from app.services.auth_service import AuthService
 
 
 class AccountService:
@@ -98,6 +99,8 @@ class AccountService:
 
         platform_id = self.get_platform_id(platform_name)
         active_status_id = self.get_status_id("active")
+
+        AuthService().ensure_profile(user_id)
 
         print("========== PLATFORM ID ==========")
         print("platform_name:", platform_name)
@@ -234,4 +237,60 @@ class AccountService:
             .execute()
         )
 
-        return response.data or []
+        accounts = response.data or []
+        platform_ids = [
+            account["platform_id"]
+            for account in accounts
+            if account.get("platform_id")
+        ]
+
+        platform_names: dict[str, str] = {}
+
+        if platform_ids:
+            platforms_response = (
+                self.supabase
+                .table("platforms")
+                .select("id, platform_name")
+                .in_("id", platform_ids)
+                .execute()
+            )
+
+            platform_names = {
+                platform["id"]: platform["platform_name"]
+                for platform in (platforms_response.data or [])
+            }
+
+        for account in accounts:
+            platform_name = platform_names.get(account.get("platform_id"))
+            account["platform"] = (
+                {"platform_name": platform_name}
+                if platform_name
+                else None
+            )
+
+        return accounts
+
+    def disconnect_account(self, user_id: UUID, account_id: UUID) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+
+        response = (
+            self.supabase
+            .table("connected_accounts")
+            .update(
+                {
+                    "deleted_at": now,
+                    "is_enabled": False,
+                    "updated_at": now,
+                }
+            )
+            .eq("id", str(account_id))
+            .eq("user_id", str(user_id))
+            .is_("deleted_at", "null")
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Connected account not found",
+            )

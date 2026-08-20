@@ -6,9 +6,17 @@ type PlatformConnectCardProps = {
   platform: ConnectPlatform
   icon: ReactNode
   onConnect?: () => void
+  isConnecting?: boolean
+  disabled?: boolean
 }
 
-export function PlatformConnectCard({ platform, icon, onConnect }: PlatformConnectCardProps) {
+export function PlatformConnectCard({
+  platform,
+  icon,
+  onConnect,
+  isConnecting = false,
+  disabled = false,
+}: PlatformConnectCardProps) {
   return (
     <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-surface-variant bg-surface-container-lowest p-xl shadow-sm transition-shadow duration-300 hover:shadow-md">
       <div
@@ -22,10 +30,11 @@ export function PlatformConnectCard({ platform, icon, onConnect }: PlatformConne
       <button
         type="button"
         onClick={onConnect}
-        className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 font-label-md text-label-md text-white shadow-sm transition-colors ${platform.buttonClass}`}
+        disabled={disabled || isConnecting}
+        className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 font-label-md text-label-md text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${platform.buttonClass}`}
       >
-        {platform.actionLabel}
-        <MaterialIcon name="arrow_forward" className="text-[18px]" />
+        {isConnecting ? 'Connecting...' : platform.actionLabel}
+        <MaterialIcon name={isConnecting ? 'progress_activity' : 'arrow_forward'} className={`text-[18px] ${isConnecting ? 'animate-spin' : ''}`} />
       </button>
     </div>
   )

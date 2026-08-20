@@ -27,6 +27,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ProfileUpdateRequest(BaseModel):
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
+    username: str = Field(min_length=1)
+
+
 # ---------------------------------------------------------
 # Signup
 # ---------------------------------------------------------
@@ -52,6 +58,8 @@ def signup(request: SignupRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unable to create user",
             )
+
+        AuthService().ensure_profile(response.user.id, response.user)
 
         return {
             "message": "User created successfully",
@@ -141,7 +149,34 @@ def get_current_user(
             detail="Invalid authenticated user",
         ) from exc
 
+    service.ensure_profile(user_id, auth_user)
+    service.update_last_login(user_id)
     return service.get_profile(user_id)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+)
+def update_current_user(
+    payload: ProfileUpdateRequest,
+    auth_user=Depends(get_authenticated_supabase_user),
+):
+    service = AuthService()
+    try:
+        user_id = auth_user.id
+    except AttributeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authenticated user",
+        ) from exc
+
+    return service.update_profile(
+        user_id,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        username=payload.username,
+    )
 
 
 # ---------------------------------------------------------

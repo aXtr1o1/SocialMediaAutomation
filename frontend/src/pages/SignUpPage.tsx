@@ -40,7 +40,6 @@ export function SignUpPage() {
   const [emailError, setEmailError] = useState('')
   const [confirmError, setConfirmError] = useState('')
   const [formError, setFormError] = useState('')
-  const [notice, setNotice] = useState('')
   const [isShaking, setIsShaking] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const passwordVisibility = usePasswordVisibility()
@@ -53,7 +52,6 @@ export function SignUpPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormError('')
-    setNotice('')
 
     if (!isValidEmail(form.email)) {
       setEmailError('Valid email required')
@@ -85,7 +83,13 @@ export function SignUpPage() {
         return
       }
 
-      setNotice('Check your email to confirm your account, then sign in.')
+      navigate(paths.signIn, {
+        replace: true,
+        state: {
+          email: form.email,
+          notice: 'Check your email to confirm your account, then sign in.',
+        },
+      })
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : 'Could not create account')
     } finally {
@@ -233,7 +237,6 @@ export function SignUpPage() {
               <div className="absolute inset-0 translate-y-full bg-white/20 transition-transform duration-300 ease-out group-hover:translate-y-0" />
             </Button>
             {formError ? <p className="text-center text-[13px] text-error">{formError}</p> : null}
-            {notice ? <p className="text-center text-[13px] text-primary">{notice}</p> : null}
             <p className="text-center text-[12px] text-on-surface-variant">
               By signing up, you agree to our{' '}
               <a className={`font-semibold ${authClasses.link}`} href="#">

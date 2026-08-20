@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     moz_api_url: str = "https://lsapi.seomoz.com/v2/url_metrics"
 
     secret_key: SecretStr
+    frontend_url: str = "http://127.0.0.1:3000"
 
     linkedin_client_id: str = ""
     linkedin_client_secret: SecretStr = SecretStr("")
@@ -57,7 +58,8 @@ class Settings(BaseSettings):
     crawler_max_concurrency: int = 5
     crawler_connect_timeout: float = 10.0
     crawler_read_timeout: float = 30.0
-    crawler_max_retries: int = 2
+    crawler_max_retries: int = 4
+    crawler_request_delay_seconds: float = 1.0
     crawler_max_articles_per_source: int = 20
     kpi_pass_threshold: float = 70.0
     kpi_domain_reputation_weight: float = 0.20

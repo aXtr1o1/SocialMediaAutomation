@@ -26,7 +26,7 @@ class ProcessingService:
                "metadata": {"source_id": result.get("source_id"), "domain_id": result.get("domain_id"),
                             "subdomain_ids": result.get("subdomain_ids", []), "title": result.get("title"),
                             "author": result.get("author"), "publish_date": result.get("published_at"),
-                            "last_updated_date": result.get("last_updated_at"), "source_url": result.get("url"),
+                            "last_updated_date": (result.get("crawl_metadata") or {}).get("last_updated_date") or result.get("last_updated_at"), "source_url": result.get("url"),
                             "kpi": result.get("kpi", {}), "matching": result.get("matching", {})}}
         saved = self.db.table("processed_content").upsert(row, on_conflict="article_id").execute().data or []
         self.db.table("crawled_articles").update({"is_processed": True}).eq("id", str(article_id)).execute()

@@ -1,14 +1,21 @@
+from uuid import UUID
+import time
+
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.supabase import get_supabase_client
+from app.core.supabase import get_supabase_auth_client
+from app.services.auth_service import AuthService
 
 
 bearer_scheme = HTTPBearer(
     auto_error=False,
 )
+
+_TOKEN_CACHE: dict[str, tuple[float, object]] = {}
+_TOKEN_TTL_SECONDS = 120.0
 
 
 def get_access_token(
@@ -39,7 +46,11 @@ def get_authenticated_supabase_user(
         Depends(get_access_token),
     ],
 ):
-    supabase = get_supabase_client()
+    cached = _TOKEN_CACHE.get(access_token)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+
+    supabase = get_supabase_auth_client()
 
     try:
         response = supabase.auth.get_user(access_token)
@@ -55,4 +66,15 @@ def get_authenticated_supabase_user(
             detail="Invalid or expired access token",
         )
 
+    try:
+        AuthService().ensure_profile(UUID(str(response.user.id)), response.user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to create user profile",
+        ) from exc
+
+    _TOKEN_CACHE[access_token] = (time.monotonic() + _TOKEN_TTL_SECONDS, response.user)
     return response.user

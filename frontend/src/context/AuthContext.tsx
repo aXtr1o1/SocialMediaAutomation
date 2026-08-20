@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
+import { ensurePublicUserProfile } from '../lib/auth'
 
 type AuthContextValue = {
   session: Session | null
@@ -38,12 +39,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setIsReady(true)
+      if (data.session) {
+        void ensurePublicUserProfile()
+      }
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
+      if (nextSession) {
+        void ensurePublicUserProfile()
+      }
     })
 
     return () => {

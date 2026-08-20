@@ -6,6 +6,9 @@ export const paths = {
   connectedAccounts: '/connected-accounts',
   connectAccount: '/connected-accounts/connect',
   discover: '/discover',
+  sources: '/sources',
+  generations: '/generations',
+  generationsCompose: '/generations/compose',
   publicationHistory: '/publication-history',
   profile: '/profile',
 } as const
