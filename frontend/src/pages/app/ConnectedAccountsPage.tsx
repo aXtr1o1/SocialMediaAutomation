@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AddAccountCard } from '../../components/accounts/AddAccountCard'
+import { AlreadyConnectedModal } from '../../components/accounts/AlreadyConnectedModal'
 import { ConnectedAccountCard } from '../../components/accounts/ConnectedAccountCard'
+import { DeleteAccountModal } from '../../components/accounts/DeleteAccountModal'
 import { useConnectedAccounts } from '../../hooks/useConnectedAccounts'
+import { ApiError } from '../../lib/api'
 import {
+  activateAccount,
+  deleteAccount,
   disconnectAccount,
   getAccountPlatformId,
+  getConflictAccount,
   startAccountConnect,
+  type ConnectedAccount,
 } from '../../lib/accounts'
 import { paths } from '../../lib/paths'
 
@@ -16,12 +23,19 @@ export function ConnectedAccountsPage() {
   const [notice, setNotice] = useState('')
   const [oauthError, setOauthError] = useState('')
   const [busyAccountId, setBusyAccountId] = useState('')
+  const [conflictAccount, setConflictAccount] = useState<ConnectedAccount | null>(null)
+  const [pendingConflictPlatform, setPendingConflictPlatform] = useState<string | null>(null)
+  const [accountToDelete, setAccountToDelete] = useState<ConnectedAccount | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     const connected = searchParams.get('connected')
+    const saved = searchParams.get('saved')
+    const conflict = searchParams.get('conflict') === '1'
     const callbackError = searchParams.get('error')
 
-    if (!connected && !callbackError) {
+    if (!connected && !saved && !callbackError && !conflict) {
       return
     }
 
@@ -31,14 +45,44 @@ export function ConnectedAccountsPage() {
       setNotice('Bluesky account connected.')
     } else if (connected) {
       setNotice('Account connected.')
+    } else if (saved === 'linkedin') {
+      setNotice('LinkedIn account saved as disconnected.')
+    } else if (saved === 'bluesky') {
+      setNotice('Bluesky account saved as disconnected.')
+    } else if (saved) {
+      setNotice('Account saved as disconnected.')
     }
 
     if (callbackError) {
       setOauthError(callbackError)
     }
 
+    if (conflict) {
+      setPendingConflictPlatform(saved || connected || 'any')
+    }
+
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!pendingConflictPlatform || isLoading) {
+      return
+    }
+
+    const matching = accounts.find((account) => {
+      const platformId = getAccountPlatformId(account)
+      return (
+        account.is_enabled &&
+        (pendingConflictPlatform === 'any' || platformId === pendingConflictPlatform)
+      )
+    })
+
+    if (matching) {
+      setConflictAccount(matching)
+    }
+
+    setPendingConflictPlatform(null)
+  }, [accounts, isLoading, pendingConflictPlatform])
 
   useEffect(() => {
     if (!notice) {
@@ -65,11 +109,33 @@ export function ConnectedAccountsPage() {
     setBusyAccountId(accountId)
 
     try {
-      const { authorization_url } = await startAccountConnect(platformId)
+      const { authorization_url } = await startAccountConnect(platformId, 'reconnect')
       window.location.assign(authorization_url)
     } catch (caught) {
       setBusyAccountId('')
       setOauthError(caught instanceof Error ? caught.message : 'Could not reconnect account')
+    }
+  }
+
+  async function handleConnect(accountId: string) {
+    setOauthError('')
+    setBusyAccountId(accountId)
+
+    try {
+      await activateAccount(accountId)
+      await reload()
+    } catch (caught) {
+      const conflicting = getConflictAccount(caught)
+      if (conflicting) {
+        setConflictAccount(conflicting)
+      } else if (caught instanceof ApiError && caught.status === 400) {
+        void handleReconnect(accountId)
+        return
+      } else {
+        setOauthError(caught instanceof Error ? caught.message : 'Could not connect account')
+      }
+    } finally {
+      setBusyAccountId('')
     }
   }
 
@@ -87,13 +153,32 @@ export function ConnectedAccountsPage() {
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!accountToDelete) {
+      return
+    }
+
+    setDeleteError('')
+    setIsDeleting(true)
+
+    try {
+      await deleteAccount(accountToDelete.id)
+      setAccountToDelete(null)
+      await reload()
+    } catch (caught) {
+      setDeleteError(caught instanceof Error ? caught.message : 'Could not delete account')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="flex w-full flex-col px-lg py-xl">
       <div className="mb-lg">
         <h1 className="mb-xs font-display-lg text-display-lg text-on-surface">Connected Accounts</h1>
         <p className="max-w-2xl font-body-md text-body-md text-on-surface-variant">
-          Manage the social profiles linked to your SMAP workspace. Ensure connections remain active to avoid
-          publishing interruptions.
+          Manage the social profiles linked to your SMAP workspace. One LinkedIn account and one Bluesky account can be
+          connected at a time. Disconnected accounts stay in this list.
         </p>
       </div>
 
@@ -109,11 +194,18 @@ export function ConnectedAccountsPage() {
                 key={account.id}
                 account={account}
                 isBusy={busyAccountId === account.id}
+                onConnect={() => {
+                  void handleConnect(account.id)
+                }}
                 onReconnect={() => {
                   void handleReconnect(account.id)
                 }}
                 onDisconnect={() => {
                   void handleDisconnect(account.id)
+                }}
+                onDelete={() => {
+                  setDeleteError('')
+                  setAccountToDelete(account)
                 }}
               />
             ))
@@ -128,6 +220,32 @@ export function ConnectedAccountsPage() {
         >
           Skip for now
         </Link>
+      ) : null}
+
+      {conflictAccount ? (
+        <AlreadyConnectedModal
+          account={conflictAccount}
+          onClose={() => {
+            setConflictAccount(null)
+          }}
+        />
+      ) : null}
+
+      {accountToDelete ? (
+        <DeleteAccountModal
+          account={accountToDelete}
+          isDeleting={isDeleting}
+          error={deleteError}
+          onCancel={() => {
+            if (!isDeleting) {
+              setAccountToDelete(null)
+              setDeleteError('')
+            }
+          }}
+          onConfirm={() => {
+            void handleConfirmDelete()
+          }}
+        />
       ) : null}
     </div>
   )

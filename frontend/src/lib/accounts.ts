@@ -1,4 +1,4 @@
-import { apiFetch } from './api'
+import { apiFetch, ApiError } from './api'
 import type { ConnectPlatform } from './platforms'
 
 export type ConnectedAccount = {
@@ -12,17 +12,52 @@ export type ConnectedAccount = {
   platform?: { platform_name: string } | null
 }
 
+export type AccountConnectIntent = 'add' | 'reconnect'
+
 export function listConnectedAccounts() {
   return apiFetch<ConnectedAccount[]>('/accounts')
 }
 
-export function startAccountConnect(platform: ConnectPlatform['id']) {
-  return apiFetch<{ authorization_url: string }>(`/accounts/${platform}/connect`)
+export function startAccountConnect(
+  platform: ConnectPlatform['id'],
+  intent: AccountConnectIntent = 'add',
+) {
+  return apiFetch<{ authorization_url: string }>(`/accounts/${platform}/connect?intent=${intent}`)
 }
 
 export function disconnectAccount(accountId: string) {
   return apiFetch<{ message: string }>(`/accounts/${accountId}`, {
     method: 'DELETE',
+  })
+}
+
+export function deleteAccount(accountId: string) {
+  return apiFetch<{ message: string }>(`/accounts/${accountId}/permanent`, {
+    method: 'DELETE',
+  })
+}
+
+export function getConflictAccount(error: unknown): ConnectedAccount | null {
+  if (!(error instanceof ApiError) || error.status !== 409) {
+    return null
+  }
+
+  const body = error.body
+  if (!body || typeof body !== 'object' || !('detail' in body)) {
+    return null
+  }
+
+  const detail = (body as { detail: unknown }).detail
+  if (!detail || typeof detail !== 'object' || !('connected_account' in detail)) {
+    return null
+  }
+
+  return (detail as { connected_account: ConnectedAccount }).connected_account
+}
+
+export function activateAccount(accountId: string) {
+  return apiFetch<ConnectedAccount>(`/accounts/${accountId}/activate`, {
+    method: 'POST',
   })
 }
 
@@ -76,10 +111,6 @@ export function getAccountSubtitle(account: ConnectedAccount) {
 }
 
 export function isAccountExpired(account: ConnectedAccount) {
-  if (!account.is_enabled) {
-    return true
-  }
-
   if (!account.token_expiry) {
     return false
   }

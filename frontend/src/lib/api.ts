@@ -1,5 +1,17 @@
 import { supabase } from './supabaseClient'
 
+export class ApiError extends Error {
+  status: number
+  body: unknown
+
+  constructor(message: string, status: number, body: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
 function getApiUrl() {
   const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '')
 
@@ -16,6 +28,13 @@ function getErrorMessage(body: unknown, fallback: string) {
 
     if (typeof detail === 'string' && detail.trim()) {
       return detail
+    }
+
+    if (detail && typeof detail === 'object' && 'message' in detail) {
+      const message = (detail as { message: unknown }).message
+      if (typeof message === 'string' && message.trim()) {
+        return message
+      }
     }
   }
 
@@ -64,8 +83,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new Error(getErrorMessage(body, 'Request failed'))
+    throw new ApiError(getErrorMessage(body, 'Request failed'), response.status, body)
   }
 
   return response.json() as Promise<T>
 }
+

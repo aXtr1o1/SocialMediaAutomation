@@ -22,7 +22,7 @@ export function SignInPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const locationState = (location.state as SignInLocationState | null) ?? {}
-  const [email, setEmail] = useState(locationState.email ?? '')
+  const [identifier, setIdentifier] = useState(locationState.email ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [notice] = useState(locationState.notice ?? '')
@@ -35,7 +35,7 @@ export function SignInPage() {
     setIsSubmitting(true)
 
     try {
-      await signInWithEmail(email, password)
+      await signInWithEmail(identifier, password)
       navigate(POST_LOGIN_PATH, { replace: true })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not sign in')
@@ -58,13 +58,13 @@ export function SignInPage() {
 
         <form className="flex flex-col gap-[24px]" onSubmit={handleSubmit}>
           <Input
-            id="email"
+            id="identifier"
             label="Username or Email address"
-            type="email"
-            placeholder="name@company.com"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            type="text"
+            placeholder="username or name@company.com"
+            autoComplete="username"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
           />
 
           <Input

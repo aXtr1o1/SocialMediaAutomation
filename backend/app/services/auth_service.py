@@ -12,6 +12,34 @@ class AuthService:
     def __init__(self):
         self.supabase = get_supabase_client()
 
+    def resolve_login_email(self, identifier: str) -> str:
+        value = identifier.strip()
+        if not value:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username/email or password",
+            )
+
+        if "@" in value:
+            return value.lower()
+
+        response = (
+            self.supabase
+            .table("users")
+            .select("email")
+            .ilike("username", value)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data or not response.data[0].get("email"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username/email or password",
+            )
+
+        return str(response.data[0]["email"]).strip().lower()
+
     def get_profile(self, user_id: UUID) -> dict:
         response = (
             self.supabase

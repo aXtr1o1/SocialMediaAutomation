@@ -15,8 +15,62 @@ export async function signInWithGoogle() {
   }
 }
 
-export async function signInWithEmail(email: string, password: string) {
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+function getApiUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '')
+
+  if (!apiUrl) {
+    throw new Error('Missing VITE_API_URL in .env.local')
+  }
+
+  return apiUrl
+}
+
+function getLoginErrorMessage(body: unknown) {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = (body as { detail: unknown }).detail
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail
+    }
+  }
+
+  return 'Invalid username/email or password'
+}
+
+export async function signInWithEmail(identifier: string, password: string) {
+  const response = await fetch(`${getApiUrl()}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      identifier: identifier.trim(),
+      password,
+    }),
+  })
+
+  const body = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(getLoginErrorMessage(body))
+  }
+
+  const accessToken =
+    body && typeof body === 'object' && 'access_token' in body
+      ? (body as { access_token: unknown }).access_token
+      : null
+  const refreshToken =
+    body && typeof body === 'object' && 'refresh_token' in body
+      ? (body as { refresh_token: unknown }).refresh_token
+      : null
+
+  if (typeof accessToken !== 'string' || typeof refreshToken !== 'string') {
+    throw new Error('Login succeeded but session tokens were not returned.')
+  }
+
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  })
 
   if (error) {
     throw error

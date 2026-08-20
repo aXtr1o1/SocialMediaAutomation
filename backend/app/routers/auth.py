@@ -23,7 +23,7 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    identifier: str = Field(min_length=1)
     password: str
 
 
@@ -87,15 +87,17 @@ def signup(request: SignupRequest):
 @router.post("/login")
 def login(request: LoginRequest):
     """
-    Authenticate a user using Supabase Auth.
+    Authenticate a user using username or email via Supabase Auth.
     """
 
     supabase = get_supabase_auth_client()
 
     try:
+        email = AuthService().resolve_login_email(request.identifier)
+
         response = supabase.auth.sign_in_with_password(
             {
-                "email": request.email,
+                "email": email,
                 "password": request.password,
             }
         )
@@ -103,7 +105,7 @@ def login(request: LoginRequest):
         if response.user is None or response.session is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
+                detail="Invalid username/email or password",
             )
 
         return {
@@ -124,7 +126,7 @@ def login(request: LoginRequest):
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid username/email or password",
         ) from exc
 
 
@@ -150,7 +152,11 @@ def get_current_user(
         ) from exc
 
     service.ensure_profile(user_id, auth_user)
-    service.update_last_login(user_id)
+    try:
+        service.update_last_login(user_id)
+    except Exception as exc:
+        # Last-login timestamp is non-critical; do not fail /auth/me on transient DB errors.
+        print("AuthService.update_last_login warning:", exc)
     return service.get_profile(user_id)
 
 

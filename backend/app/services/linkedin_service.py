@@ -22,6 +22,8 @@ class LinkedInService:
             "redirect_uri": self.settings.linkedin_redirect_uri,
             "state": state,
             "scope": self.settings.linkedin_scopes,
+            "prompt": "select_account",
+            "max_age": "0",
         }
 
         return (

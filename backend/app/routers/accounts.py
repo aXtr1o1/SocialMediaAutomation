@@ -22,16 +22,18 @@ router = APIRouter(
 )
 
 
-_pending_linkedin_states: dict[str, UUID] = {}
+_pending_linkedin_states: dict[str, tuple[UUID, str]] = {}
 _pending_bluesky_states: dict[
     str,
-    tuple[UUID, BlueskyOAuthSession],
+    tuple[UUID, BlueskyOAuthSession, str],
 ] = {}
 
 
 def _frontend_accounts_redirect(
     *,
     connected: str | None = None,
+    saved: str | None = None,
+    conflict: bool = False,
     error: str | None = None,
 ) -> RedirectResponse:
     settings = get_settings()
@@ -40,6 +42,10 @@ def _frontend_accounts_redirect(
 
     if connected:
         params["connected"] = connected
+    if saved:
+        params["saved"] = saved
+    if conflict:
+        params["conflict"] = "1"
     if error:
         params["error"] = error[:200]
 
@@ -47,6 +53,13 @@ def _frontend_accounts_redirect(
         return RedirectResponse(f"{url}?{urlencode(params)}")
 
     return RedirectResponse(url)
+
+
+def _oauth_save_redirect(platform: str, save_result: dict) -> RedirectResponse:
+    if save_result.get("was_activated"):
+        return _frontend_accounts_redirect(connected=platform)
+
+    return _frontend_accounts_redirect(saved=platform, conflict=True)
 
 
 def _oauth_error_detail(exc: HTTPException) -> str:
@@ -61,13 +74,25 @@ def _oauth_error_detail(exc: HTTPException) -> str:
 
 @router.get("/linkedin/connect")
 async def connect_linkedin(
+    intent: str = "add",
     current_user=Depends(get_authenticated_supabase_user),
 ):
     linkedin_service = LinkedInService()
 
     state = linkedin_service.create_state()
 
-    _pending_linkedin_states[state] = UUID(current_user.id)
+    normalized_intent = (
+        intent.strip().lower()
+        if isinstance(intent, str)
+        else "add"
+    )
+    if normalized_intent not in {"add", "reconnect"}:
+        normalized_intent = "add"
+
+    _pending_linkedin_states[state] = (
+        UUID(current_user.id),
+        normalized_intent,
+    )
 
     authorization_url = (
         linkedin_service.build_authorization_url(state)
@@ -105,13 +130,14 @@ async def linkedin_callback(
                 detail="LinkedIn authorization code was not returned",
             )
 
-        user_id = _pending_linkedin_states.pop(state, None)
+        pending = _pending_linkedin_states.pop(state, None)
 
-        if user_id is None:
+        if pending is None:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid or expired OAuth state",
             )
+        user_id, intent = pending
 
         linkedin_service = LinkedInService()
         settings = get_settings()
@@ -147,7 +173,7 @@ async def linkedin_callback(
         account_service = AccountService()
 
         try:
-            account_service.save_connected_account(
+            save_result = account_service.save_connected_account(
                 user_id=user_id,
                 platform_name=settings.linkedin_platform_name,
                 account_name=account_name,
@@ -171,7 +197,7 @@ async def linkedin_callback(
                 detail="Unable to save LinkedIn connected account",
             ) from exc
 
-        return _frontend_accounts_redirect(connected="linkedin")
+        return _oauth_save_redirect("linkedin", save_result)
 
     except HTTPException as exc:
         return _frontend_accounts_redirect(error=_oauth_error_detail(exc))
@@ -183,6 +209,7 @@ async def linkedin_callback(
 
 @router.get("/bluesky/connect")
 async def connect_bluesky(
+    intent: str = "add",
     current_user=Depends(get_authenticated_supabase_user),
 ):
     """
@@ -205,9 +232,18 @@ async def connect_bluesky(
         # Store user + OAuth session
         # -----------------------------------------------------
 
+        normalized_intent = (
+            intent.strip().lower()
+            if isinstance(intent, str)
+            else "add"
+        )
+        if normalized_intent not in {"add", "reconnect"}:
+            normalized_intent = "add"
+
         _pending_bluesky_states[oauth_session.state] = (
             UUID(current_user.id),
             oauth_session,
+            normalized_intent,
         )
 
     except Exception as exc:
@@ -248,7 +284,7 @@ async def bluesky_callback(
                 detail="Invalid or expired Bluesky OAuth state",
             )
 
-        user_id, oauth_session = pending
+        user_id, oauth_session, intent = pending
 
         if error:
             detail = error_description or error
@@ -317,7 +353,7 @@ async def bluesky_callback(
         account_service = AccountService()
 
         try:
-            account_service.save_connected_account(
+            save_result = account_service.save_connected_account(
                 user_id=user_id,
                 platform_name=settings.bluesky_platform_name,
                 account_name=account_name,
@@ -341,7 +377,7 @@ async def bluesky_callback(
                 detail="Unable to save Bluesky connected account",
             ) from exc
 
-        return _frontend_accounts_redirect(connected="bluesky")
+        return _oauth_save_redirect("bluesky", save_result)
 
     except HTTPException as exc:
         return _frontend_accounts_redirect(error=_oauth_error_detail(exc))
@@ -367,6 +403,30 @@ async def get_connected_accounts(
     )
 
     return accounts
+
+
+@router.post("/{account_id}/activate")
+async def activate_connected_account(
+    account_id: UUID,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    service = AccountService()
+    account = service.activate_account(UUID(current_user.id), account_id)
+
+    return account
+
+
+@router.delete("/{account_id}/permanent")
+async def permanently_delete_connected_account(
+    account_id: UUID,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    service = AccountService()
+    service.delete_account(UUID(current_user.id), account_id)
+
+    return {
+        "message": "Account deleted",
+    }
 
 
 @router.delete("/{account_id}")
