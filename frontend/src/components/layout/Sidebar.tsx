@@ -8,7 +8,7 @@ export function Sidebar() {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-on-primary">
           S
         </div>
-        <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface">SMAP</span>
+        <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface">Social Media Automation Platform</span>
       </div>
 
       <nav className="flex-1 space-y-1 px-3">

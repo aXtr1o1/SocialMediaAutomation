@@ -177,8 +177,7 @@ export function ConnectedAccountsPage() {
       <div className="mb-lg">
         <h1 className="mb-xs font-display-lg text-display-lg text-on-surface">Connected Accounts</h1>
         <p className="max-w-2xl font-body-md text-body-md text-on-surface-variant">
-          Manage the social profiles linked to your SMAP workspace. One LinkedIn account and one Bluesky account can be
-          connected at a time. Disconnected accounts stay in this list.
+          Manage the social profiles linked to your Social Media Automation Platform workspace.
         </p>
       </div>
 

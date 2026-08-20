@@ -15,12 +15,10 @@ from app.services.bluesky_service import (
     BlueskyOAuthSession,
 )
 
-
 router = APIRouter(
     prefix="/accounts",
     tags=["Accounts"],
 )
-
 
 _pending_linkedin_states: dict[str, tuple[UUID, str]] = {}
 _pending_bluesky_states: dict[
