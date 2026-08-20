@@ -266,9 +266,21 @@ class AccountService:
             "scopes": scopes,
             "account_type": account_type,
             "updated_at": now,
-            "is_enabled": should_enable,
-            "deleted_at": None,
+            "is_enabled": True,
+            "is_deleted": None,
         }
+
+        print("========== ACCOUNT DATA ==========")
+        print({
+            **account_data,
+            "access_token_encrypted": "***",
+            "refresh_token": "***",
+        })
+        print("==================================")
+
+        # ---------------------------------------------------------
+        # 3. Update existing account
+        # ---------------------------------------------------------
 
         if existing_id:
             response = (
