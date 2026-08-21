@@ -121,3 +121,16 @@ body,
 .animate-shake {
   animation: shake 400ms ease-in-out;
 }
+
+@keyframes smap-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-smap-shimmer {
+  animation: smap-shimmer 1.6s linear infinite;
+}

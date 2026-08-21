@@ -36,7 +36,7 @@ export function ProfileField({
         onChange={onChange ? (event) => onChange(event.target.value) : undefined}
         className={cn(
           'h-12 rounded-lg border border-surface-variant px-4 font-body-md text-body-md text-on-surface outline-none transition-shadow focus:border-transparent focus:ring-2 focus:ring-primary',
-          readOnly && 'cursor-default bg-surface-container text-on-surface-variant',
+          readOnly && 'cursor-not-allowed bg-surface-container text-on-surface-variant',
           !readOnly && 'bg-surface-container-lowest',
         )}
       />

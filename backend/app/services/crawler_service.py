@@ -413,7 +413,14 @@ class CrawlerService:
             "status_id": self._status("completed"),
         }
 
-    async def crawl_source(self, source: dict[str, Any], client: httpx.AsyncClient) -> dict[str, Any]:
+    async def crawl_source(
+        self,
+        source: dict[str, Any],
+        client: httpx.AsyncClient,
+        on_article_found=None,
+        on_page_seen=None,
+        should_cancel=None,
+    ) -> dict[str, Any]:
         started = time.perf_counter()
         root = str(source["url"])
         root_url = self._normalize_url(root, root) or root
@@ -433,12 +440,16 @@ class CrawlerService:
             playwright_used = False
 
             while pending:
+                if should_cancel is not None and should_cancel():
+                    raise asyncio.CancelledError()
                 if max_pages is not None and len(seen) >= max_pages:
                     break
                 url = pending.popleft()
                 if url in seen:
                     continue
                 seen.add(url)
+                if on_page_seen is not None and (len(seen) == 1 or len(seen) % 5 == 0):
+                    await on_page_seen(source, len(seen), len(results))
                 try:
                     use_playwright = not playwright_used and url in playwright_seeds
                     page = await self._fetch_page(client, url, use_playwright=use_playwright)
@@ -477,6 +488,8 @@ class CrawlerService:
                     if not row.get("crawl_metadata"):
                         row["crawl_metadata"] = record["crawl_metadata"]
                     results.append(row)
+                    if on_article_found is not None:
+                        await on_article_found(source, row)
                 except httpx.HTTPStatusError as exc:
                     status = exc.response.status_code
                     if status == 429:
@@ -515,15 +528,60 @@ class CrawlerService:
             log.warning("source_failed source_id=%s url=%s error=%s", source["id"], root, exc, exc_info=True)
             return {"source_id": str(source["id"]), "status": "FAILED", "articles": [], "error": str(exc), "response_time": round(time.perf_counter() - started, 3)}
 
-    async def crawl(self, sources: list[dict[str, Any]], user_id: str | None = None) -> list[dict[str, Any]]:
+    async def crawl(
+        self,
+        sources: list[dict[str, Any]],
+        user_id: str | None = None,
+        on_source_start=None,
+        on_source_done=None,
+        on_article_found=None,
+        on_page_seen=None,
+        should_cancel=None,
+    ) -> list[dict[str, Any]]:
         limits = httpx.Limits(max_connections=self.settings.crawler_max_concurrency)
         timeout = httpx.Timeout(self.settings.crawler_read_timeout, connect=self.settings.crawler_connect_timeout)
         semaphore = asyncio.Semaphore(self.settings.crawler_max_concurrency)
+        results: list[dict[str, Any]] = []
+        done_count = 0
+        total = len(sources)
+        done_lock = asyncio.Lock()
+
         async with httpx.AsyncClient(timeout=timeout, limits=limits, headers=BROWSER_HEADERS) as client:
             async def one(source: dict[str, Any]) -> dict[str, Any]:
+                nonlocal done_count
+                if should_cancel is not None and should_cancel():
+                    raise asyncio.CancelledError()
                 async with semaphore:
-                    return await self.crawl_source(source, client)
-            return await asyncio.gather(*(one(s) for s in sources))
+                    if should_cancel is not None and should_cancel():
+                        raise asyncio.CancelledError()
+                    if on_source_start is not None:
+                        await on_source_start(source)
+                    result = await self.crawl_source(
+                        source,
+                        client,
+                        on_article_found=on_article_found,
+                        on_page_seen=on_page_seen,
+                        should_cancel=should_cancel,
+                    )
+                async with done_lock:
+                    done_count += 1
+                    current_done = done_count
+                if on_source_done is not None:
+                    await on_source_done(result, current_done, total, source)
+                return result
+
+            gathered = await asyncio.gather(*(one(s) for s in sources), return_exceptions=True)
+
+        for item in gathered:
+            if isinstance(item, asyncio.CancelledError):
+                raise item
+            if isinstance(item, BaseException):
+                log.warning("source_gather_failed error=%s", item, exc_info=item)
+                continue
+            results.append(item)
+        if should_cancel is not None and should_cancel():
+            raise asyncio.CancelledError()
+        return results
 
     async def domain_reputation(self, sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Cheap pre-crawl checks, cached once per source/domain for this run."""

@@ -35,11 +35,16 @@ class SourceArticleResponse(BaseModel):
 class WorkflowProgress(BaseModel):
     stage: str = "crawling"
     message: str = ""
+    activity: str = ""
+    current_site: str = ""
+    activity_log: list[str] = Field(default_factory=list)
     crawled: int = 0
     kpi_passed: int = 0
     match_passed: int = 0
     sources_done: int = 0
     sources_total: int = 0
+    checked: int = 0
+    pages_seen: int = 0
 
 
 class WorkflowRunResponse(BaseModel):

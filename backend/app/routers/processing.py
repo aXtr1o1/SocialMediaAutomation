@@ -39,3 +39,17 @@ def get_content_workflow(
             detail="This sources run was not found. Continue from Discover again.",
         )
     return snapshot
+
+
+@router.post("/run/{workflow_run_id}/cancel", response_model=WorkflowRunResponse)
+def cancel_content_workflow(
+    workflow_run_id: str,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    snapshot = WorkflowService().cancel(workflow_run_id, str(current_user.id))
+    if not snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This sources run was not found.",
+        )
+    return snapshot
