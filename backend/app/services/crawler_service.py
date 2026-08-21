@@ -583,7 +583,10 @@ class CrawlerService:
             raise asyncio.CancelledError()
         return results
 
-    async def domain_reputation(self, sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    async def domain_reputation(
+        self, 
+        sources: list[dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
         """Cheap pre-crawl checks, cached once per source/domain for this run."""
         unique = {str(s["domain_id"]): s for s in sources}
         timeout = httpx.Timeout(self.settings.crawler_read_timeout, connect=self.settings.crawler_connect_timeout)

@@ -186,40 +186,46 @@ export function ConnectedAccountsPage() {
       {error ? <p className="mb-md font-body-md text-body-md text-error">{error}</p> : null}
       {isLoading ? <p className="mb-md font-body-md text-body-md text-on-surface-variant">Loading accounts...</p> : null}
 
-      <div className="grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-3">
-        {!isLoading
-          ? accounts.map((account) => (
-              <ConnectedAccountCard
-                key={account.id}
-                account={account}
-                isBusy={busyAccountId === account.id}
-                onConnect={() => {
-                  void handleConnect(account.id)
-                }}
-                onReconnect={() => {
-                  void handleReconnect(account.id)
-                }}
-                onDisconnect={() => {
-                  void handleDisconnect(account.id)
-                }}
-                onDelete={() => {
-                  setDeleteError('')
-                  setAccountToDelete(account)
-                }}
-              />
-            ))
-          : null}
-        {!isLoading ? <AddAccountCard /> : null}
-      </div>
-
+      {/* Cards Section */}
       {!isLoading && accounts.length === 0 ? (
-        <Link
-          className="mt-lg font-body-md text-on-surface-variant underline transition-colors hover:text-on-surface"
-          to={paths.discover}
-        >
-          Skip for now
-        </Link>
-      ) : null}
+        <div className="flex min-h-[55vh] w-full flex-col items-center justify-center">
+          <div className="w-full max-w-md">
+            <AddAccountCard />
+          </div>
+          <Link
+            className="mt-lg font-body-md text-on-surface-variant underline transition-colors hover:text-on-surface"
+            to={paths.discover}
+          >
+            Skip for now
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-md md:grid-cols-2 lg:grid-cols-3">
+          {!isLoading
+            ? accounts.map((account) => (
+                <ConnectedAccountCard
+                  key={account.id}
+                  account={account}
+                  isBusy={busyAccountId === account.id}
+                  onConnect={() => {
+                    void handleConnect(account.id)
+                  }}
+                  onReconnect={() => {
+                    void handleReconnect(account.id)
+                  }}
+                  onDisconnect={() => {
+                    void handleDisconnect(account.id)
+                  }}
+                  onDelete={() => {
+                    setDeleteError('')
+                    setAccountToDelete(account)
+                  }}
+                />
+              ))
+            : null}
+          {!isLoading ? <AddAccountCard /> : null}
+        </div>
+      )}
 
       {conflictAccount ? (
         <AlreadyConnectedModal

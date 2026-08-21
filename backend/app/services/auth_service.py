@@ -12,7 +12,10 @@ class AuthService:
     def __init__(self):
         self.supabase = get_supabase_client()
 
-    def resolve_login_email(self, identifier: str) -> str:
+    def resolve_login_email(
+        self, 
+        identifier: str,
+    ) -> str:
         value = identifier.strip()
         if not value:
             raise HTTPException(
@@ -40,7 +43,10 @@ class AuthService:
 
         return str(response.data[0]["email"]).strip().lower()
 
-    def get_profile(self, user_id: UUID) -> dict:
+    def get_profile(
+        self, 
+        user_id: UUID,
+    ) -> dict:
         response = (
             self.supabase
             .table("users")
@@ -75,7 +81,11 @@ class AuthService:
 
         return response.data
 
-    def ensure_profile(self, user_id: UUID, auth_user: Any | None = None) -> None:
+    def ensure_profile(
+        self, 
+        user_id: UUID, 
+        auth_user: Any | None = None,
+    ) -> None:
         existing = (
             self.supabase
             .table("users")
@@ -147,7 +157,10 @@ class AuthService:
             return user.get(key)
         return getattr(user, key, None)
 
-    def update_last_login(self, user_id: UUID) -> None:
+    def update_last_login(
+        self, 
+        user_id: UUID,
+    ) -> None:
         self.supabase.table("users").update(
             {
                 "last_login": datetime.now(timezone.utc).isoformat(),

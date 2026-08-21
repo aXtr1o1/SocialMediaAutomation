@@ -1,7 +1,8 @@
-from uuid import UUID
-import time
+from __future__ import annotations
 
-from typing import Annotated
+import time
+from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer

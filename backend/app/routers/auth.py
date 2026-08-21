@@ -19,18 +19,28 @@ router = APIRouter()
 
 class SignupRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(
+        min_length=8,
+    )
 
 
 class LoginRequest(BaseModel):
-    identifier: str = Field(min_length=1)
+    identifier: str = Field(
+        min_length=1,
+    )
     password: str
 
 
 class ProfileUpdateRequest(BaseModel):
-    first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
-    username: str = Field(min_length=1)
+    first_name: str = Field(
+        min_length=1,
+    )
+    last_name: str = Field(
+        min_length=1,
+    )
+    username: str = Field(
+        min_length=1,
+    )
 
 
 # ---------------------------------------------------------
@@ -187,7 +197,7 @@ def update_current_user(
 
 # ---------------------------------------------------------
 # Logout
-# ---------------------------------------------------------
+# ----------------------------------------------------- ----
 
 @router.post("/logout")
 def logout(

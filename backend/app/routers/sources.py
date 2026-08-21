@@ -2,14 +2,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.security import get_authenticated_supabase_user
 from app.models.source import (
     SourceCreate,
     SourceResponse,
     SourceUpdate,
 )
 from app.services.source_service import SourceService
-from app.core.security import get_authenticated_supabase_user
-
 
 router = APIRouter()
 
@@ -41,8 +40,12 @@ def create_source(
     response_model=list[SourceResponse],
 )
 def get_sources(
-    current_user=Depends(get_authenticated_supabase_user),
-    service: SourceService = Depends(get_source_service),
+    current_user=Depends(
+        get_authenticated_supabase_user
+    ),
+    service: SourceService = Depends(
+        get_source_service
+),
 ):
     user_id = UUID(str(current_user.id))
 
@@ -57,8 +60,12 @@ def get_sources(
 )
 def get_source(
     source_id: UUID,
-    current_user=Depends(get_authenticated_supabase_user),
-    service: SourceService = Depends(get_source_service),
+    current_user=Depends(
+        get_authenticated_supabase_user
+    ),
+    service: SourceService = Depends(
+        get_source_service
+    ),
 ):
     user_id = UUID(str(current_user.id))
 
@@ -83,8 +90,12 @@ def get_source(
 def update_source(
     source_id: UUID,
     source: SourceUpdate,
-    current_user=Depends(get_authenticated_supabase_user),
-    service: SourceService = Depends(get_source_service),
+    current_user=Depends(
+        get_authenticated_supabase_user
+    ),
+    service: SourceService = Depends(
+        get_source_service
+    ),
 ):
     user_id = UUID(str(current_user.id))
 
@@ -109,8 +120,12 @@ def update_source(
 )
 def delete_source(
     source_id: UUID,
-    current_user=Depends(get_authenticated_supabase_user),
-    service: SourceService = Depends(get_source_service),
+    current_user=Depends(
+        get_authenticated_supabase_user
+    ),
+    service: SourceService = Depends(
+        get_source_service
+    ),
 ):
     user_id = UUID(str(current_user.id))
 

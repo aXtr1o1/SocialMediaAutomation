@@ -19,9 +19,15 @@ class DomainReputationService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    async def check(self, sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    async def check(
+        self, 
+        sources: list[dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
         unique = {str(s["id"]): s for s in sources}
-        timeout = httpx.Timeout(self.settings.crawler_read_timeout, connect=self.settings.crawler_connect_timeout)
+        timeout = httpx.Timeout(
+            self.settings.crawler_read_timeout, 
+            connect=self.settings.crawler_connect_timeout
+        )
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=BROWSER_HEADERS) as client:
             async def one(item):
                 source_id, source = item

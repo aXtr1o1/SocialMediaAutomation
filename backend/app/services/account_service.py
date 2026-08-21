@@ -68,7 +68,10 @@ class AccountService:
 
         return UUID(response.data[0]["id"])
 
-    def get_status_id(self, status_name: str) -> UUID:
+    def get_status_id(
+        self, 
+        status_name: str,
+    ) -> UUID:
         response = (
             self.supabase
             .table("statuses")
@@ -112,7 +115,10 @@ class AccountService:
 
         return query
 
-    def _attach_platforms(self, accounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _attach_platforms(
+        self, 
+        accounts: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         platform_ids = [
             account["platform_id"]
             for account in accounts
@@ -145,7 +151,10 @@ class AccountService:
 
         return accounts
 
-    def _public_account(self, account: dict[str, Any]) -> dict[str, Any]:
+    def _public_account(
+        self, 
+        account: dict[str, Any]
+    ) -> dict[str, Any]:
         public = {
             key: account.get(key)
             for key in (
@@ -330,8 +339,12 @@ class AccountService:
                     ).execute()
 
         return {
-            "account": self._public_account(saved_account),
-            "was_activated": bool(saved_account.get("is_enabled")),
+            "account": self._public_account(
+                saved_account
+            ),
+            "was_activated": bool(
+                saved_account.get("is_enabled")
+            ),
             "active_account": conflict_account,
         }
 
@@ -357,7 +370,11 @@ class AccountService:
         )
         return accounts
 
-    def disconnect_account(self, user_id: UUID, account_id: UUID) -> None:
+    def disconnect_account(
+        self, 
+        user_id: UUID, 
+        account_id: UUID,
+    ) -> None:
         now = datetime.now(timezone.utc).isoformat()
 
         response = (
@@ -381,7 +398,11 @@ class AccountService:
                 detail="Connected account not found",
             )
 
-    def activate_account(self, user_id: UUID, account_id: UUID) -> dict[str, Any]:
+    def activate_account(
+        self, 
+        user_id: UUID, 
+        account_id: UUID,
+    ) -> dict[str, Any]:
         response = (
             self.supabase
             .table("connected_accounts")
@@ -464,7 +485,11 @@ class AccountService:
 
         return self._public_account(updated.data[0])
 
-    def delete_account(self, user_id: UUID, account_id: UUID) -> None:
+    def delete_account(
+        self, 
+        user_id: UUID, 
+        account_id: UUID,
+    ) -> None:
         existing = (
             self.supabase
             .table("connected_accounts")

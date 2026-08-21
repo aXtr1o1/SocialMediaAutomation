@@ -23,9 +23,16 @@ class GeminiService:
         self.client = genai.Client(api_key=settings.gemini_api_key.get_secret_value())
         self.settings = settings
 
-    async def classify_article(self, *, domain: dict[str, Any], subdomains: list[dict[str, Any]],
-                               article: dict[str, Any], keyword_score: float,
-                               fuzzy_score: float, matched_terms: list[str] | None = None) -> dict[str, Any]:
+    async def classify_article(
+        self, 
+        *, 
+        domain: dict[str, Any], 
+        subdomains: list[dict[str, Any]],
+        article: dict[str, Any], 
+        keyword_score: float,
+        fuzzy_score: float, 
+        matched_terms: list[str] | None = None
+    ) -> dict[str, Any]:
         metadata = article.get("crawl_metadata") or {}
         headings = metadata.get("headings") or []
         prompt = _fill(RELEVANCE_CLASSIFY_PROMPT, {
@@ -71,7 +78,10 @@ class GeminiService:
                 "evidence": [],
             }
 
-    async def generate_json(self, prompt: str) -> dict[str, Any]:
+    async def generate_json(
+        self, 
+        prompt: str
+    ) -> dict[str, Any]:
         response = await self.client.aio.models.generate_content(
             model=self.model,
             contents=prompt,
