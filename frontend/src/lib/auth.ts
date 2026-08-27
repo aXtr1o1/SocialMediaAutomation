@@ -25,15 +25,18 @@ function getApiUrl() {
   return apiUrl
 }
 
-function getLoginErrorMessage(body: unknown) {
+function getAuthErrorMessage(body: unknown, fallback: string) {
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail
     if (typeof detail === 'string' && detail.trim()) {
       return detail
     }
   }
+  return fallback
+}
 
-  return 'Invalid username/email or password'
+function getLoginErrorMessage(body: unknown) {
+  return getAuthErrorMessage(body, 'Invalid username/email or password')
 }
 
 export async function signInWithEmail(identifier: string, password: string) {
@@ -75,6 +78,60 @@ export async function signInWithEmail(identifier: string, password: string) {
   if (error) {
     throw error
   }
+}
+
+export async function requestPasswordReset(identifier: string) {
+  const response = await fetch(`${getApiUrl()}/auth/forgot-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ identifier: identifier.trim() }),
+  })
+
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(getAuthErrorMessage(body, 'Could not send reset code'))
+  }
+
+  const message =
+    body && typeof body === 'object' && typeof (body as { message?: unknown }).message === 'string'
+      ? (body as { message: string }).message
+      : 'If an account exists, we sent a one-time code.'
+
+  return { message }
+}
+
+export async function resetPasswordWithOtp(input: {
+  identifier: string
+  otp: string
+  password: string
+  confirmPassword: string
+}) {
+  const response = await fetch(`${getApiUrl()}/auth/reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      identifier: input.identifier.trim(),
+      otp: input.otp.trim(),
+      password: input.password,
+      confirm_password: input.confirmPassword,
+    }),
+  })
+
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(getAuthErrorMessage(body, 'Could not reset password'))
+  }
+
+  const message =
+    body && typeof body === 'object' && typeof (body as { message?: unknown }).message === 'string'
+      ? (body as { message: string }).message
+      : 'Password updated. You can sign in with your new password.'
+
+  return { message }
 }
 
 type SignUpWithEmailInput = {
@@ -165,4 +222,20 @@ export async function updateUserProfile({ firstName, lastName, username }: Updat
   })
 
   return data.user
+}
+
+export async function changePassword(input: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}) {
+  const result = await apiFetch<{ message: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      current_password: input.currentPassword,
+      new_password: input.newPassword,
+      confirm_password: input.confirmPassword,
+    }),
+  })
+  return result
 }

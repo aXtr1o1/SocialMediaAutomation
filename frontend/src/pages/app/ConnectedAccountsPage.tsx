@@ -96,6 +96,18 @@ export function ConnectedAccountsPage() {
     return () => window.clearTimeout(timeoutId)
   }, [notice])
 
+  useEffect(() => {
+    if (!oauthError) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setOauthError('')
+    }, 6000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [oauthError])
+
   async function handleReconnect(accountId: string) {
     const account = accounts.find((item) => item.id === accountId)
     const platformId = account ? getAccountPlatformId(account) : null
@@ -182,7 +194,18 @@ export function ConnectedAccountsPage() {
       </div>
 
       {notice ? <p className="mb-md font-body-md text-body-md text-primary">{notice}</p> : null}
-      {oauthError ? <p className="mb-md font-body-md text-body-md text-error">{oauthError}</p> : null}
+      {oauthError ? (
+        <div className="mb-md flex items-start justify-between gap-md rounded-lg border border-error/30 bg-error-container/20 px-md py-sm">
+          <p className="font-body-md text-body-md text-error">{oauthError}</p>
+          <button
+            type="button"
+            className="shrink-0 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-on-surface"
+            onClick={() => setOauthError('')}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="mb-md font-body-md text-body-md text-error">{error}</p> : null}
       {isLoading ? <p className="mb-md font-body-md text-body-md text-on-surface-variant">Loading accounts...</p> : null}
 

@@ -36,6 +36,7 @@ export function ComposePostPage() {
         state: {
           article: selection.article,
           posts: result.posts,
+          drafts: result.drafts,
           sourcesSelection: selection.sourcesSelection,
         },
       })

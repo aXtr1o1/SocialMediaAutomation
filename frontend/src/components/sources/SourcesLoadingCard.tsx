@@ -84,11 +84,16 @@ function MetricCard({
 }
 
 type SourcesLoadingCardProps = {
-  scope: string
+  domainName?: string
+  subdomainNames?: string[]
   progress: SourcesLoadProgress | null
 }
 
-export function SourcesLoadingCard({ scope, progress }: SourcesLoadingCardProps) {
+export function SourcesLoadingCard({
+  domainName = '',
+  subdomainNames = [],
+  progress,
+}: SourcesLoadingCardProps) {
   const stage = progress?.stage || 'crawling'
   const current = uiStage(stage)
   const basePercent = loadPercent(progress)
@@ -105,6 +110,7 @@ export function SourcesLoadingCard({ scope, progress }: SourcesLoadingCardProps)
   const found = progress?.crawled || 0
   const matched = progress?.match_passed || 0
   const currentSite = progress?.current_site || ''
+  const topicCount = subdomainNames.length
 
   useEffect(() => {
     setDisplayPercent((prev) => Math.max(prev, basePercent))
@@ -140,8 +146,15 @@ export function SourcesLoadingCard({ scope, progress }: SourcesLoadingCardProps)
           <div className="min-w-0">
             <p className="font-label-sm text-label-sm text-primary">Live source search</p>
             <h2 className="mt-1 font-headline-sm text-headline-sm text-on-surface">
-              {scope ? `Looking for ${scope}` : 'Looking for matching articles'}
+              {domainName
+                ? `Searching ${domainName}`
+                : 'Looking for matching articles'}
             </h2>
+            <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+              {topicCount
+                ? `${topicCount} selected subdomain${topicCount === 1 ? '' : 's'}`
+                : 'Using your Discover selection'}
+            </p>
             <p
               key={headline}
               className="mt-2 line-clamp-2 font-body-md text-body-md text-on-surface transition-opacity duration-300"

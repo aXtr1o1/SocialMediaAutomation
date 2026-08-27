@@ -2,6 +2,7 @@ export const paths = {
   home: '/',
   signIn: '/signin',
   signUp: '/signup',
+  forgotPassword: '/forgot-password',
   callback: '/auth/callback',
   connectedAccounts: '/connected-accounts',
   connectAccount: '/connected-accounts/connect',

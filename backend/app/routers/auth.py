@@ -7,7 +7,7 @@ from app.core.security import (
     get_access_token,
     get_authenticated_supabase_user,
 )
-from app.core.supabase import get_supabase_auth_client
+from app.core.supabase import get_supabase_auth_client, get_supabase_client
 from app.models.user import UserResponse
 from app.services.auth_service import AuthService
 
@@ -29,6 +29,23 @@ class LoginRequest(BaseModel):
         min_length=1,
     )
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=320)
+
+
+class ResetPasswordRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=320)
+    otp: str = Field(min_length=4, max_length=12)
+    password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -138,6 +155,182 @@ def login(request: LoginRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username/email or password",
         ) from exc
+
+
+# ---------------------------------------------------------
+# Forgot / reset password (email OTP via Supabase SMTP)
+# ---------------------------------------------------------
+
+GENERIC_RESET_MESSAGE = (
+    "If an account exists for that username or email, we sent a one-time code."
+)
+
+
+@router.post("/forgot-password")
+def forgot_password(request: ForgotPasswordRequest):
+    """
+    Send a recovery OTP to the account email (Supabase Auth + SMTP).
+
+    Always returns a generic message so callers cannot probe for accounts.
+    """
+    from app.core.config import get_settings
+
+    supabase = get_supabase_auth_client()
+    settings = get_settings()
+    email = AuthService().find_login_email(request.identifier)
+
+    if email:
+        try:
+            supabase.auth.reset_password_for_email(
+                email,
+                {
+                    "redirect_to": f"{settings.frontend_url.rstrip('/')}/signin",
+                },
+            )
+            print(f"forgot_password: recovery email requested for {email}")
+        except Exception as exc:
+            print("forgot_password error:", type(exc).__name__, exc)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Could not send the reset email. Check Supabase Auth SMTP settings "
+                    "and the Reset password email template."
+                ),
+            ) from exc
+
+    return {"message": GENERIC_RESET_MESSAGE}
+
+
+@router.post("/reset-password")
+def reset_password(request: ResetPasswordRequest):
+    """
+    Verify the recovery OTP, then set a new password in Supabase Auth.
+    """
+    if request.password != request.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match",
+        )
+
+    otp = "".join(ch for ch in request.otp.strip() if ch.isalnum())
+    if len(otp) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter the one-time code from your email",
+        )
+
+    email = AuthService().find_login_email(request.identifier)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired code. Request a new one and try again.",
+        )
+
+    supabase = get_supabase_auth_client()
+
+    try:
+        verified = supabase.auth.verify_otp(
+            {
+                "email": email,
+                "token": otp,
+                "type": "recovery",
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired code. Request a new one and try again.",
+        ) from exc
+
+    if verified.user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired code. Request a new one and try again.",
+        )
+
+    try:
+        updated = supabase.auth.update_user({"password": request.password})
+        if updated.user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not update password. Try again.",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not update password. Try a different password.",
+        ) from exc
+    finally:
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+
+    return {"message": "Password updated. You can sign in with your new password."}
+
+
+@router.post("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    auth_user=Depends(get_authenticated_supabase_user),
+):
+    """
+    Change password for the signed-in user after verifying the current password.
+    Updates Supabase Auth only (not public.users).
+    """
+    if request.new_password != request.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match",
+        )
+
+    if request.new_password == request.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password",
+        )
+
+    email = str(getattr(auth_user, "email", "") or "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has no email password login.",
+        )
+
+    supabase = get_supabase_auth_client()
+    try:
+        verified = supabase.auth.sign_in_with_password(
+            {
+                "email": email,
+                "password": request.current_password,
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        ) from exc
+
+    if verified.user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    try:
+        get_supabase_client().auth.admin.update_user_by_id(
+            str(auth_user.id),
+            {"password": request.new_password},
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not update password. Try a different password.",
+        ) from exc
+
+    return {"message": "Password updated."}
 
 
 # ---------------------------------------------------------

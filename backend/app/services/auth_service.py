@@ -43,6 +43,36 @@ class AuthService:
 
         return str(response.data[0]["email"]).strip().lower()
 
+    def find_login_email(self, identifier: str) -> str | None:
+        """Resolve username/email to an account email, or None if not found."""
+        value = identifier.strip()
+        if not value:
+            return None
+
+        if "@" in value:
+            email = value.lower()
+            rows = (
+                self.supabase.table("users")
+                .select("email")
+                .ilike("email", email)
+                .limit(1)
+                .execute()
+            )
+            if rows.data and rows.data[0].get("email"):
+                return str(rows.data[0]["email"]).strip().lower()
+            return email
+
+        response = (
+            self.supabase.table("users")
+            .select("email")
+            .ilike("username", value)
+            .limit(1)
+            .execute()
+        )
+        if not response.data or not response.data[0].get("email"):
+            return None
+        return str(response.data[0]["email"]).strip().lower()
+
     def get_profile(
         self, 
         user_id: UUID,
