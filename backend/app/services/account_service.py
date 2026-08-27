@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, status
 
 from app.core.config import get_settings
@@ -33,21 +33,43 @@ class AccountService:
 
     def __init__(self):
         self.supabase = get_supabase_client()
-        secret = get_settings().secret_key.get_secret_value()
-        encryption_key = base64.urlsafe_b64encode(
-            hashlib.sha256(secret.encode("utf-8")).digest()
+        settings = get_settings()
+
+        primary = settings.oauth_token_encryption_key.get_secret_value().strip()
+        if not primary:
+            raise RuntimeError("OAUTH_TOKEN_ENCRYPTION_KEY is not configured")
+
+        self._token_cipher = Fernet(primary.encode("utf-8"))
+
+        previous: list[Fernet] = []
+        for key in settings.oauth_token_encryption_previous_keys.split(","):
+            cleaned = key.strip()
+            if cleaned:
+                previous.append(Fernet(cleaned.encode("utf-8")))
+
+        # Temporary legacy support: tokens encrypted with SHA256(SECRET_KEY).
+        legacy_key = base64.urlsafe_b64encode(
+            hashlib.sha256(settings.secret_key.get_secret_value().encode("utf-8")).digest()
         )
-        self._token_cipher = Fernet(encryption_key)
+        legacy = Fernet(legacy_key)
+
+        self._decrypt_ciphers = [self._token_cipher, *previous, legacy]
 
     def _encrypt_token(self, token: str) -> str:
-        return self._token_cipher.encrypt(
-            token.encode("utf-8")
-        ).decode("utf-8")
+        return self._token_cipher.encrypt(token.encode("utf-8")).decode("utf-8")
 
     def _decrypt_token(self, encrypted_token: str) -> str:
-        return self._token_cipher.decrypt(
-            encrypted_token.encode("utf-8")
-        ).decode("utf-8")
+        raw = encrypted_token.encode("utf-8")
+        last_error: Exception | None = None
+        for cipher in self._decrypt_ciphers:
+            try:
+                return cipher.decrypt(raw).decode("utf-8")
+            except InvalidToken as exc:
+                last_error = exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to decrypt connected-account token",
+        ) from last_error
 
     def get_platform_id(self, platform_name: str) -> UUID:
 
@@ -91,29 +113,6 @@ class AccountService:
             )
 
         return UUID(response.data[0]["id"])
-
-    def _matching_account_query(
-        self,
-        *,
-        user_id: UUID,
-        platform_id: UUID,
-        provider_user_id: str | None,
-        provider_handle: str | None,
-    ):
-        query = (
-            self.supabase
-            .table("connected_accounts")
-            .select("id")
-            .eq("user_id", str(user_id))
-            .eq("platform_id", str(platform_id))
-        )
-
-        if provider_user_id:
-            query = query.eq("provider_user_id", provider_user_id)
-        elif provider_handle:
-            query = query.eq("provider_handle", provider_handle)
-
-        return query
 
     def _attach_platforms(
         self, 
@@ -221,42 +220,38 @@ class AccountService:
         account_type: str = "oauth",
     ) -> dict[str, Any]:
 
+        if not provider_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="provider_user_id is required to save a connected account",
+            )
+
         platform_id = self.get_platform_id(platform_name)
         active_status_id = self.get_status_id("active")
 
         AuthService().ensure_profile(user_id)
-
-        existing_response = (
-            self._matching_account_query(
-                user_id=user_id,
-                platform_id=platform_id,
-                provider_user_id=provider_user_id,
-                provider_handle=provider_handle,
-            )
-            .limit(1)
-            .execute()
-        )
-
-        existing_id = (
-            existing_response.data[0]["id"]
-            if existing_response.data
-            else None
-        )
 
         enabled_account = self.get_enabled_account_for_platform(
             user_id=user_id,
             platform_id=platform_id,
         )
 
+        same_provider = (
+            enabled_account is not None
+            and enabled_account.get("provider_user_id") == provider_user_id
+        )
+
         should_enable = True
         conflict_account = None
 
-        if enabled_account and enabled_account.get("id") != existing_id:
+        if enabled_account and not same_provider:
             should_enable = False
             conflict_account = enabled_account
 
         now = datetime.now(timezone.utc).isoformat()
 
+        # Omit connected_at so inserts use the DB default and updates keep
+        # the original connection timestamp.
         account_data = {
             "user_id": str(user_id),
             "platform_id": str(platform_id),
@@ -279,24 +274,15 @@ class AccountService:
             "deleted_at": None,
         }
 
-        if existing_id:
-            response = (
-                self.supabase
-                .table("connected_accounts")
-                .update(account_data)
-                .eq("id", existing_id)
-                .execute()
+        response = (
+            self.supabase
+            .table("connected_accounts")
+            .upsert(
+                account_data,
+                on_conflict="user_id,platform_id,provider_user_id",
             )
-        else:
-            response = (
-                self.supabase
-                .table("connected_accounts")
-                .insert({
-                    **account_data,
-                    "connected_at": now,
-                })
-                .execute()
-            )
+            .execute()
+        )
 
         if not response.data:
             raise HTTPException(
@@ -305,38 +291,6 @@ class AccountService:
             )
 
         saved_account = response.data[0]
-
-        if provider_user_id or provider_handle:
-            duplicate_response = (
-                self._matching_account_query(
-                    user_id=user_id,
-                    platform_id=platform_id,
-                    provider_user_id=provider_user_id,
-                    provider_handle=provider_handle,
-                )
-                .execute()
-            )
-
-            duplicate_ids = [
-                row["id"]
-                for row in (duplicate_response.data or [])
-                if row.get("id") and row["id"] != saved_account["id"]
-            ]
-
-            if duplicate_ids:
-                dedupe_time = datetime.now(timezone.utc).isoformat()
-
-                for duplicate_id in duplicate_ids:
-                    self.supabase.table("connected_accounts").update(
-                        {
-                            "is_enabled": False,
-                            "updated_at": dedupe_time,
-                            "deleted_at": None,
-                        }
-                    ).eq("id", duplicate_id).eq(
-                        "user_id",
-                        str(user_id),
-                    ).execute()
 
         return {
             "account": self._public_account(

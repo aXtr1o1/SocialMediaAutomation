@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.security import get_authenticated_supabase_user
@@ -56,26 +58,30 @@ async def regenerate_generation_snippet(
 
 @router.get("/drafts/{draft_id}", response_model=GenerationDraft)
 def get_generation_draft(
-    draft_id: str,
+    draft_id: UUID,
     current_user=Depends(get_authenticated_supabase_user),
 ):
     try:
-        return GenerationService().get_draft(user_id=str(current_user.id), draft_id=draft_id)
+        return GenerationService().get_draft(
+            user_id=str(current_user.id),
+            draft_id=str(draft_id),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/drafts/{draft_id}/versions", response_model=GenerationDraft)
 def add_generation_version(
-    draft_id: str,
+    draft_id: UUID,
     payload: AddVersionRequest,
     current_user=Depends(get_authenticated_supabase_user),
 ):
     try:
         service = GenerationService()
+        draft_id_str = str(draft_id)
         service.add_version(
             user_id=str(current_user.id),
-            draft_id=draft_id,
+            draft_id=draft_id_str,
             full_post=payload.full_post,
             label=payload.label,
             source=payload.source,
@@ -83,21 +89,21 @@ def add_generation_version(
             instruction=payload.instruction,
             replacement_text=payload.replacement_text,
         )
-        return service.get_draft(user_id=str(current_user.id), draft_id=draft_id)
+        return service.get_draft(user_id=str(current_user.id), draft_id=draft_id_str)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/drafts/{draft_id}/current", response_model=GenerationDraft)
 def set_generation_current_version(
-    draft_id: str,
+    draft_id: UUID,
     payload: SetCurrentVersionRequest,
     current_user=Depends(get_authenticated_supabase_user),
 ):
     try:
         return GenerationService().set_current_version(
             user_id=str(current_user.id),
-            draft_id=draft_id,
+            draft_id=str(draft_id),
             version_id=str(payload.version_id),
         )
     except ValueError as exc:
@@ -106,15 +112,15 @@ def set_generation_current_version(
 
 @router.delete("/drafts/{draft_id}/versions/{version_id}", response_model=GenerationDraft)
 def delete_generation_version(
-    draft_id: str,
-    version_id: str,
+    draft_id: UUID,
+    version_id: UUID,
     current_user=Depends(get_authenticated_supabase_user),
 ):
     try:
         return GenerationService().delete_version(
             user_id=str(current_user.id),
-            draft_id=draft_id,
-            version_id=version_id,
+            draft_id=str(draft_id),
+            version_id=str(version_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

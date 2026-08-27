@@ -81,7 +81,7 @@ class GenerationService:
         self.gemini = GeminiService()
 
     async def create(self, *, user_id: str, article_id: str, platforms: list[str]) -> dict[str, Any]:
-        article = self._load_article(article_id)
+        article = self._load_article(article_id, user_id=user_id)
         if not article:
             raise ValueError("Processed article was not found")
 
@@ -386,11 +386,12 @@ class GenerationService:
         )
         return [_version_payload(row) for row in rows]
 
-    def _load_article(self, article_id: str) -> dict[str, str] | None:
+    def _load_article(self, article_id: str, *, user_id: str) -> dict[str, str] | None:
         rows = (
             self.db.table("processed_content")
             .select("*")
             .eq("article_id", article_id)
+            .eq("created_by", str(user_id))
             .limit(1)
             .execute()
             .data
@@ -401,6 +402,7 @@ class GenerationService:
                 self.db.table("processed_content")
                 .select("*")
                 .eq("id", article_id)
+                .eq("created_by", str(user_id))
                 .limit(1)
                 .execute()
                 .data

@@ -32,6 +32,13 @@ class Settings(BaseSettings):
 
     secret_key: SecretStr
 
+    # Dedicated Fernet key for OAuth token encryption (url-safe base64, 32 bytes).
+    # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    oauth_token_encryption_key: SecretStr
+
+    # Optional comma-separated previous Fernet keys used during key rotation.
+    oauth_token_encryption_previous_keys: str = ""
+
     # -----------------------------------------------------------------------
     # Supabase
     # -----------------------------------------------------------------------
