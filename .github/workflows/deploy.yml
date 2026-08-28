@@ -1,0 +1,71 @@
+name: CI/CD Deploy to AWS EC2
+
+on: 
+  push:
+    branches:
+      - main
+      - dharanish-dev
+      - hari-dev
+      - jeeva-dev
+      - naveen-dev
+      - testing
+  pull_request:
+    branches:
+      - main
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python for Backend
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Backend - Install Dependencies
+        run: |
+          cd backend
+          python -m pip install -r requirements.txt
+          python -m pip show pytest || python -m pip install pytest
+      - name: Backend - Unit Tests
+        run: |
+          cd backend
+          python -m pytest
+      
+  deploy:
+    needs: tests
+    runs-on: ubuntu-latest
+    environment: EC2_HOST
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: 22
+        timeout: 30s
+        command_timeout: 10m
+        script: |
+          cd SocialMediaAutomation
+          git checkout main
+          git fetch
+          echo "Pulling latest code..."
+          git pull 
+          cd backend
+          echo "Installing dependencies..."
+          python -m pip install -r requirements.txt
+    
+          echo "Restarting service..."
+          sudo systemctl restart backend
