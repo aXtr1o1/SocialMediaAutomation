@@ -47,7 +47,7 @@ export function ProfileField({
             'h-12 w-full rounded-lg border border-surface-variant px-4 font-body-md text-body-md text-on-surface outline-none transition-shadow focus:border-transparent focus:ring-2 focus:ring-primary',
             readOnly && 'cursor-not-allowed bg-surface-container text-on-surface-variant',
             !readOnly && 'bg-surface-container-lowest',
-            rightSlot && 'pr-12',
+            rightSlot ? 'pr-12' : undefined,
             className,
           )}
         />
