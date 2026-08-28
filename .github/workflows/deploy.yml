@@ -1,0 +1,52 @@
+name: Deploy to AWS EC2
+
+on:
+  workflow_run:
+    workflows:
+      - "Run Tests"
+    types:
+      - completed
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+
+    if: >
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 10m
+
+          script: |
+            cd ~/SocialMediaAutomation
+
+            echo "Fetching latest code..."
+            git fetch origin
+
+            echo "Switching to main..."
+            git checkout main
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            cd backend
+
+            echo "Installing dependencies..."
+            python -m pip install -r requirements.txt
+
+            echo "Restarting backend service..."
+            sudo systemctl restart backend
+
+            echo "Deployment completed successfully!"
