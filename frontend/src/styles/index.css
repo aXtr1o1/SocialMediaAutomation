@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+html.light {
+  color-scheme: light;
+  --color-primary: 108 92 231;
+  --color-primary-container: 108 92 231;
+  --color-on-primary: 255 255 255;
+  --color-on-surface: 25 28 29;
+  --color-on-surface-variant: 71 69 84;
+  --color-outline: 120 117 134;
+  --color-outline-variant: 200 196 215;
+  --color-error: 186 26 26;
+  --color-error-container: 255 218 214;
+  --color-tertiary: 136 72 0;
+  --color-background: 248 249 250;
+  --color-surface: 248 249 250;
+  --color-surface-variant: 225 227 228;
+  --color-surface-container: 237 238 239;
+  --color-surface-container-low: 243 244 245;
+  --color-surface-container-high: 231 232 233;
+  --color-surface-container-highest: 225 227 228;
+  --color-surface-container-lowest: 255 255 255;
+  --color-brand: 108 92 231;
+  --color-brand-hover: 90 76 209;
+  --color-brand-deep: 88 71 210;
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-primary: 108 92 231;
+  --color-primary-container: 108 92 231;
+  --color-on-primary: 255 255 255;
+  --color-on-surface: 228 226 230;
+  --color-on-surface-variant: 196 193 204;
+  --color-outline: 147 143 153;
+  --color-outline-variant: 72 70 82;
+  --color-error: 255 180 171;
+  --color-error-container: 147 0 10;
+  --color-tertiary: 255 183 125;
+  --color-background: 17 19 24;
+  --color-surface: 28 27 34;
+  --color-surface-variant: 68 70 79;
+  --color-surface-container: 36 37 43;
+  --color-surface-container-low: 32 33 39;
+  --color-surface-container-high: 42 43 50;
+  --color-surface-container-highest: 48 49 56;
+  --color-surface-container-lowest: 30 31 36;
+  --color-brand: 108 92 231;
+  --color-brand-hover: 138 126 245;
+  --color-brand-deep: 166 157 255;
+}
+
+html,
+body,
+#root {
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-on-surface));
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  body {
+    overscroll-behavior: none;
+    font-family: Inter, sans-serif;
+  }
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(5px);
+  }
+  60% {
+    transform: translateX(-5px);
+  }
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-shake {
+  animation: shake 400ms ease-in-out;
+}
+
+@keyframes smap-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-smap-shimmer {
+  animation: smap-shimmer 1.6s linear infinite;
+}
