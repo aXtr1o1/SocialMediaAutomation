@@ -1,0 +1,83 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        primary: 'rgb(var(--color-primary) / <alpha-value>)',
+        'primary-container': 'rgb(var(--color-primary-container) / <alpha-value>)',
+        'on-primary': 'rgb(var(--color-on-primary) / <alpha-value>)',
+        'on-surface': 'rgb(var(--color-on-surface) / <alpha-value>)',
+        'on-surface-variant': 'rgb(var(--color-on-surface-variant) / <alpha-value>)',
+        outline: 'rgb(var(--color-outline) / <alpha-value>)',
+        'outline-variant': 'rgb(var(--color-outline-variant) / <alpha-value>)',
+        error: 'rgb(var(--color-error) / <alpha-value>)',
+        'error-container': 'rgb(var(--color-error-container) / <alpha-value>)',
+        tertiary: 'rgb(var(--color-tertiary) / <alpha-value>)',
+        background: 'rgb(var(--color-background) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        'surface-variant': 'rgb(var(--color-surface-variant) / <alpha-value>)',
+        'surface-container': 'rgb(var(--color-surface-container) / <alpha-value>)',
+        'surface-container-low': 'rgb(var(--color-surface-container-low) / <alpha-value>)',
+        'surface-container-high': 'rgb(var(--color-surface-container-high) / <alpha-value>)',
+        'surface-container-highest': 'rgb(var(--color-surface-container-highest) / <alpha-value>)',
+        'surface-container-lowest': 'rgb(var(--color-surface-container-lowest) / <alpha-value>)',
+        brand: {
+          DEFAULT: 'rgb(var(--color-brand) / <alpha-value>)',
+          hover: 'rgb(var(--color-brand-hover) / <alpha-value>)',
+          deep: 'rgb(var(--color-brand-deep) / <alpha-value>)',
+        },
+      },
+      borderRadius: {
+        DEFAULT: '0.25rem',
+        lg: '0.5rem',
+        xl: '16px',
+        full: '9999px',
+      },
+      spacing: {
+        base: '4px',
+        xs: '8px',
+        sm: '12px',
+        md: '16px',
+        lg: '24px',
+        xl: '32px',
+        gutter: '20px',
+        'margin-mobile': '16px',
+        'margin-desktop': '40px',
+      },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        'body-md': ['Inter', 'sans-serif'],
+        'body-lg': ['Inter', 'sans-serif'],
+        'headline-sm': ['Inter', 'sans-serif'],
+        'headline-md': ['Inter', 'sans-serif'],
+        'label-sm': ['Inter', 'sans-serif'],
+        'label-md': ['Inter', 'sans-serif'],
+        'display-lg': ['Inter', 'sans-serif'],
+      },
+      fontSize: {
+        'body-md': ['14px', { lineHeight: '20px', fontWeight: '400' }],
+        'body-lg': ['16px', { lineHeight: '24px', fontWeight: '400' }],
+        'headline-sm': ['18px', { lineHeight: '24px', fontWeight: '600' }],
+        'headline-md': [
+          '24px',
+          { lineHeight: '32px', letterSpacing: '-0.01em', fontWeight: '600' },
+        ],
+        'label-sm': [
+          '11px',
+          { lineHeight: '14px', letterSpacing: '0.03em', fontWeight: '600' },
+        ],
+        'label-md': [
+          '12px',
+          { lineHeight: '16px', letterSpacing: '0.01em', fontWeight: '500' },
+        ],
+        'display-lg': [
+          '32px',
+          { lineHeight: '40px', letterSpacing: '-0.02em', fontWeight: '600' },
+        ],
+      },
+    },
+  },
+  plugins: [],
+}
