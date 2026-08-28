@@ -11,11 +11,9 @@ from app.core.config import get_settings
 from app.core.security import get_authenticated_supabase_user
 from app.services.account_service import AccountService
 from app.services.auth_service import AuthService
-from app.services.bluesky_service import (
-    BlueskyOAuthSession,
-    BlueskyService,
-)
+from app.services.bluesky_service import BlueskyService
 from app.services.linkedin_service import LinkedInService
+from app.services.oauth_state_service import OAuthStateService
 
 
 # ---------------------------------------------------------------------------
@@ -26,26 +24,6 @@ router = APIRouter(
     prefix="/accounts",
     tags=["Accounts"],
 )
-
-
-# ---------------------------------------------------------------------------
-# OAuth state storage
-# ---------------------------------------------------------------------------
-#
-# These are intentionally kept in memory to preserve the current behavior.
-# If the application is deployed with multiple backend instances, this
-# should eventually move to a shared store such as Redis or the database.
-#
-
-_pending_linkedin_states: dict[
-    str,
-    tuple[UUID, str],
-] = {}
-
-_pending_bluesky_states: dict[
-    str,
-    tuple[UUID, BlueskyOAuthSession, str],
-] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +157,10 @@ async def connect_linkedin(
 
     state = linkedin_service.create_state()
 
-    _pending_linkedin_states[state] = (
-        user_id,
-        normalized_intent,
+    OAuthStateService().save_linkedin_state(
+        state=state,
+        user_id=user_id,
+        intent=normalized_intent,
     )
 
     authorization_url = (
@@ -232,10 +211,7 @@ async def linkedin_callback(
         # Retrieve and consume OAuth state
         # ---------------------------------------------------------------
 
-        pending = _pending_linkedin_states.pop(
-            state,
-            None,
-        )
+        pending = OAuthStateService().consume_linkedin_state(state)
 
         if pending is None:
             raise HTTPException(
@@ -352,10 +328,11 @@ async def connect_bluesky(
             detail="Unable to start Bluesky OAuth",
         ) from exc
 
-    _pending_bluesky_states[oauth_session.state] = (
-        user_id,
-        oauth_session,
-        normalized_intent,
+    OAuthStateService().save_bluesky_state(
+        state=oauth_session.state,
+        user_id=user_id,
+        intent=normalized_intent,
+        session=oauth_session,
     )
 
     return {
@@ -381,10 +358,7 @@ async def bluesky_callback(
         # Retrieve and consume OAuth state
         # ---------------------------------------------------------------
 
-        pending = _pending_bluesky_states.pop(
-            state,
-            None,
-        )
+        pending = OAuthStateService().consume_bluesky_state(state)
 
         if pending is None:
             raise HTTPException(

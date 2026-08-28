@@ -38,8 +38,23 @@ class SourceMatchingService:
         self.gemini = GeminiService()
 
     def get_fixed_context(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        domain = self.db.table("domains").select("*").eq("id", self.settings.workflow_domain_id).single().execute().data
-        subs = self.db.table("subdomains").select("*").eq("domain_id", self.settings.workflow_domain_id).execute().data or []
+        allowed_domain_id = str(self.settings.workflow_domain_id)
+        domain = (
+            self.db.table("domains")
+            .select("*")
+            .eq("id", allowed_domain_id)
+            .single()
+            .execute()
+            .data
+        )
+        subs = (
+            self.db.table("subdomains")
+            .select("*")
+            .eq("domain_id", allowed_domain_id)
+            .execute()
+            .data
+            or []
+        )
         if not domain:
             raise RuntimeError("Configured workflow domain was not found")
         return domain, subs
@@ -53,10 +68,14 @@ class SourceMatchingService:
         if not unique_ids:
             raise ValueError("Select at least one subdomain")
 
+        allowed_domain_id = str(self.settings.workflow_domain_id)
+        if str(domain_id) != allowed_domain_id:
+            raise ValueError("This domain is not available for the current workspace")
+
         domain_rows = (
             self.db.table("domains")
             .select("*")
-            .eq("id", domain_id)
+            .eq("id", allowed_domain_id)
             .limit(1)
             .execute()
             .data
@@ -64,13 +83,11 @@ class SourceMatchingService:
         domain = domain_rows[0] if domain_rows else None
         if not domain:
             raise ValueError("Domain was not found")
-        if str(domain["id"]) != str(self.settings.workflow_domain_id):
-            raise ValueError("This domain is not available for the current workspace")
 
         rows = (
             self.db.table("subdomains")
             .select("*")
-            .eq("domain_id", domain_id)
+            .eq("domain_id", allowed_domain_id)
             .in_("id", unique_ids)
             .execute()
             .data
@@ -132,7 +149,8 @@ class SourceMatchingService:
         )
         llm = self._enforce_llm_accuracy(llm, subdomains)
         title_hit = any(self._token_coverage(fields["title"], term) >= 1.0 for term in subdomain_terms)
-        lexical_ok = keyword_score >= 28 or fuzzy_score >= 40 or title_hit or bool(llm.get("evidence"))
+        # Deterministic floor only — LLM evidence cannot substitute for lexical signal.
+        lexical_ok = keyword_score >= 28 or fuzzy_score >= 40 or title_hit
         final = (
             keyword_score * self.settings.source_keyword_weight
             + fuzzy_score * self.settings.source_fuzzy_weight

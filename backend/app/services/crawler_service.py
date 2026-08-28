@@ -353,6 +353,7 @@ class CrawlerService:
         root_url: str,
         content: str,
         source: dict[str, Any],
+        user_id: str,
     ) -> dict[str, Any]:
         title = (soup.title.string.strip() if soup.title and soup.title.string else None)
         description = None
@@ -393,6 +394,7 @@ class CrawlerService:
             "publish_date": published or None,
         }
         return {
+            "created_by": str(user_id),
             "source_id": str(source["id"]),
             "domain_id": str(source["domain_id"]),
             "subdomain_ids": source.get("subdomain_ids", []),
@@ -417,6 +419,8 @@ class CrawlerService:
         self,
         source: dict[str, Any],
         client: httpx.AsyncClient,
+        *,
+        user_id: str,
         on_article_found=None,
         on_page_seen=None,
         should_cancel=None,
@@ -482,8 +486,15 @@ class CrawlerService:
                         root_url=root_url,
                         content=content,
                         source=source,
+                        user_id=user_id,
                     )
-                    saved = self.db.table("crawled_articles").upsert(record, on_conflict="source_id,url").execute().data or []
+                    saved = (
+                        self.db.table("crawled_articles")
+                        .upsert(record, on_conflict="created_by,source_id,url")
+                        .execute()
+                        .data
+                        or []
+                    )
                     row = saved[0] if saved else record
                     if not row.get("crawl_metadata"):
                         row["crawl_metadata"] = record["crawl_metadata"]
@@ -538,6 +549,9 @@ class CrawlerService:
         on_page_seen=None,
         should_cancel=None,
     ) -> list[dict[str, Any]]:
+        if not user_id:
+            raise ValueError("user_id is required to crawl articles")
+
         limits = httpx.Limits(max_connections=self.settings.crawler_max_concurrency)
         timeout = httpx.Timeout(self.settings.crawler_read_timeout, connect=self.settings.crawler_connect_timeout)
         semaphore = asyncio.Semaphore(self.settings.crawler_max_concurrency)
@@ -559,6 +573,7 @@ class CrawlerService:
                     result = await self.crawl_source(
                         source,
                         client,
+                        user_id=str(user_id),
                         on_article_found=on_article_found,
                         on_page_seen=on_page_seen,
                         should_cancel=should_cancel,

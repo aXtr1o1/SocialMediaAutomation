@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, urlunparse
 
 import httpx
 import jwt
@@ -16,6 +16,11 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.core.config import get_settings
+
+# Must stay in sync with oauth_pending_states expires_at TTL.
+OAUTH_SESSION_TTL_MINUTES = 15
+OAUTH_SESSION_TTL_SECONDS = OAUTH_SESSION_TTL_MINUTES * 60
+
 
 @dataclass
 class BlueskyOAuthSession:
@@ -226,6 +231,31 @@ class BlueskyService:
         return cls._base64url(digest)
 
     @classmethod
+    def _normalize_dpop_htu(cls, url: str) -> str:
+        """
+        RFC 9449 htu: absolute request URI without query/fragment,
+        with basic syntax/scheme-based normalization (lowercase
+        scheme/host, omit default ports).
+        """
+        parsed = urlparse(url.strip())
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        if scheme not in {"http", "https"} or not host:
+            raise ValueError(f"Invalid DPoP htu URL: {url}")
+
+        port = parsed.port
+        if port is not None and not (
+            (scheme == "https" and port == 443)
+            or (scheme == "http" and port == 80)
+        ):
+            netloc = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+        else:
+            netloc = f"[{host}]" if ":" in host else host
+
+        path = parsed.path or "/"
+        return urlunparse((scheme, netloc, path, "", "", ""))
+
+    @classmethod
     def _create_dpop_proof(
         cls,
         private_key_pem: str,
@@ -243,10 +273,12 @@ class BlueskyService:
             private_key
         )
 
+        htu = cls._normalize_dpop_htu(url)
+
         payload: dict[str, Any] = {
             "jti": secrets.token_urlsafe(24),
             "htm": method.upper(),
-            "htu": url,
+            "htu": htu,
             "iat": int(time.time()),
         }
 
@@ -468,10 +500,14 @@ class BlueskyService:
             "dpop_jkt": dpop_jkt,
         }
 
+        par_endpoint = self._normalize_dpop_htu(
+            metadata["par_endpoint"]
+        )
+
         dpop_proof = self._create_dpop_proof(
             private_key_pem=dpop_private_key_pem,
             method="POST",
-            url=metadata["par_endpoint"],
+            url=par_endpoint,
         )
 
         async with httpx.AsyncClient(
@@ -480,7 +516,7 @@ class BlueskyService:
         ) as client:
 
             response = await client.post(
-                metadata["par_endpoint"],
+                par_endpoint,
                 data=form_data,
                 headers={
                     "Content-Type": (
@@ -502,12 +538,12 @@ class BlueskyService:
                 dpop_proof = self._create_dpop_proof(
                     private_key_pem=dpop_private_key_pem,
                     method="POST",
-                    url=metadata["par_endpoint"],
+                    url=par_endpoint,
                     nonce=nonce,
                 )
 
                 response = await client.post(
-                    metadata["par_endpoint"],
+                    par_endpoint,
                     data=form_data,
                     headers={
                         "Content-Type": (
@@ -531,6 +567,10 @@ class BlueskyService:
                 "contain request_uri"
             )
 
+        token_endpoint = self._normalize_dpop_htu(
+            metadata["token_endpoint"]
+        )
+
         session = BlueskyOAuthSession(
             state=state,
             code_verifier=code_verifier,
@@ -539,8 +579,8 @@ class BlueskyService:
             authorization_endpoint=(
                 metadata["authorization_endpoint"]
             ),
-            token_endpoint=metadata["token_endpoint"],
-            par_endpoint=metadata["par_endpoint"],
+            token_endpoint=token_endpoint,
+            par_endpoint=par_endpoint,
             resource_server=resource_server,
             dpop_nonce=nonce,
             created_at=int(time.time()),
@@ -566,12 +606,22 @@ class BlueskyService:
     # Callback / Token Exchange
     # =========================================================
 
+    @staticmethod
+    def is_session_expired(session: BlueskyOAuthSession) -> bool:
+        if not session.created_at:
+            return True
+        age_seconds = int(time.time()) - int(session.created_at)
+        return age_seconds < 0 or age_seconds > OAUTH_SESSION_TTL_SECONDS
+
     async def exchange_code(
         self,
         code: str,
         session: BlueskyOAuthSession,
         issuer: str,
     ) -> dict[str, Any]:
+
+        if self.is_session_expired(session):
+            raise ValueError("OAuth session has expired")
 
         if issuer != session.issuer:
             raise ValueError(
@@ -591,10 +641,14 @@ class BlueskyService:
             "code_verifier": session.code_verifier,
         }
 
+        token_endpoint = self._normalize_dpop_htu(
+            session.token_endpoint
+        )
+
         dpop_proof = self._create_dpop_proof(
             private_key_pem=session.dpop_private_key_pem,
             method="POST",
-            url=session.token_endpoint,
+            url=token_endpoint,
             nonce=session.dpop_nonce,
         )
 
@@ -604,7 +658,7 @@ class BlueskyService:
         ) as client:
 
             response = await client.post(
-                session.token_endpoint,
+                token_endpoint,
                 data=form_data,
                 headers={
                     "Content-Type": (
@@ -632,13 +686,13 @@ class BlueskyService:
                             session.dpop_private_key_pem
                         ),
                         method="POST",
-                        url=session.token_endpoint,
+                        url=token_endpoint,
                         nonce=nonce,
                     )
                 )
 
                 response = await client.post(
-                    session.token_endpoint,
+                    token_endpoint,
                     data=form_data,
                     headers={
                         "Content-Type": (

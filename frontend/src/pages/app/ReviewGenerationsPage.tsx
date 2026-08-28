@@ -1,9 +1,15 @@
+import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { BlueskyPreview } from '../../components/generations/BlueskyPreview'
-import { LinkedInPreview } from '../../components/generations/LinkedInPreview'
+import { PlatformPreviewTabs } from '../../components/generations/PlatformPreviewTabs'
+import { PlatformReviewCard } from '../../components/generations/PlatformReviewCard'
 import { MaterialIcon } from '../../components/ui/MaterialIcon'
 import { useAuth } from '../../context/AuthContext'
-import { isReviewState } from '../../lib/generations'
+import {
+  isReviewState,
+  type GeneratePlatform,
+  type GeneratedPost,
+  type GenerationDraft,
+} from '../../lib/generations'
 import { paths } from '../../lib/paths'
 import { getRememberedSourcesSelection } from '../../lib/sources'
 import { getUserDisplayName } from '../../lib/user'
@@ -15,11 +21,37 @@ export function ReviewGenerationsPage() {
   const review = isReviewState(location.state) ? location.state : null
   const authorName = session?.user ? getUserDisplayName(session.user) : 'You'
   const authorSubtitle = session?.user?.email ?? ''
+  const [posts, setPosts] = useState<GeneratedPost[]>(() => review?.posts ?? [])
+  const drafts = (review?.drafts || []) as GenerationDraft[]
+  const linkedInDraft = drafts.find((item) => item.platform === 'linkedin')
+  const blueskyDraft = drafts.find((item) => item.platform === 'bluesky')
+
+  const linkedInPost = posts.find((item) => item.platform === 'linkedin')
+  const blueskyPost = posts.find((item) => item.platform === 'bluesky')
+  const availablePlatforms = useMemo(() => {
+    const platforms: GeneratePlatform[] = []
+    if (linkedInPost) {
+      platforms.push('linkedin')
+    }
+    if (blueskyPost) {
+      platforms.push('bluesky')
+    }
+    return platforms
+  }, [linkedInPost, blueskyPost])
+
+  const hasBoth = availablePlatforms.length > 1
+  const [activePlatform, setActivePlatform] = useState<GeneratePlatform>(
+    () => availablePlatforms[0] ?? 'linkedin',
+  )
 
   function goBackToSources() {
     navigate(paths.sources, {
       state: review?.sourcesSelection ?? getRememberedSourcesSelection() ?? undefined,
     })
+  }
+
+  function updatePost(next: GeneratedPost) {
+    setPosts((prev) => prev.map((item) => (item.platform === next.platform ? next : item)))
   }
 
   if (!review) {
@@ -36,8 +68,13 @@ export function ReviewGenerationsPage() {
     )
   }
 
-  const linkedInPost = review.posts.find((item) => item.platform === 'linkedin')
-  const blueskyPost = review.posts.find((item) => item.platform === 'bluesky')
+  const tabs = hasBoth ? (
+    <PlatformPreviewTabs
+      active={activePlatform}
+      platforms={availablePlatforms}
+      onChange={setActivePlatform}
+    />
+  ) : undefined
 
   return (
     <div className="relative flex w-full flex-col pb-24">
@@ -53,39 +90,37 @@ export function ReviewGenerationsPage() {
           </button>
           <h1 className="font-headline-md text-headline-md text-on-surface">Review Generations</h1>
           <p className="max-w-2xl font-body-md text-body-md text-on-surface-variant">
-            Review and refine the generated content before publishing.
+            Review and refine the generated content before publishing. Only the text you paste is rewritten.
           </p>
         </div>
       </div>
 
       <div className="flex flex-col gap-xl px-xl pb-xl">
         {linkedInPost ? (
-          <div className="rounded-2xl bg-surface-container-lowest p-lg shadow-sm">
-            <div className="mb-lg flex items-center justify-between gap-4 border-b border-surface-variant pb-md">
-              <div className="font-label-md text-label-md text-on-surface">LinkedIn Preview</div>
-              <div className="flex items-center gap-2 text-on-surface-variant">
-                <MaterialIcon name="visibility" className="text-[18px]" />
-                <span className="font-body-md text-body-md">Preview</span>
-              </div>
-            </div>
-            <LinkedInPreview
+          <div className={hasBoth && activePlatform !== 'linkedin' ? 'hidden' : undefined}>
+            <PlatformReviewCard
               post={linkedInPost}
+              draft={linkedInDraft}
+              articleId={review.article.article_id || review.article.id}
               authorName={authorName}
               authorSubtitle={authorSubtitle}
+              onPostChange={updatePost}
+              header={tabs}
             />
           </div>
         ) : null}
 
         {blueskyPost ? (
-          <div className="rounded-2xl bg-surface-container-lowest p-lg shadow-sm">
-            <div className="mb-lg flex items-center justify-between gap-4 border-b border-surface-variant pb-md">
-              <div className="font-label-md text-label-md text-on-surface">Bluesky Preview</div>
-              <div className="flex items-center gap-2 text-on-surface-variant">
-                <MaterialIcon name="visibility" className="text-[18px]" />
-                <span className="font-body-md text-body-md">Preview</span>
-              </div>
-            </div>
-            <BlueskyPreview post={blueskyPost} authorName={authorName} handle={authorSubtitle} />
+          <div className={hasBoth && activePlatform !== 'bluesky' ? 'hidden' : undefined}>
+            <PlatformReviewCard
+              post={blueskyPost}
+              draft={blueskyDraft}
+              articleId={review.article.article_id || review.article.id}
+              authorName={authorName}
+              authorSubtitle={authorSubtitle}
+              onPostChange={updatePost}
+              header={tabs}
+            />
           </div>
         ) : null}
       </div>

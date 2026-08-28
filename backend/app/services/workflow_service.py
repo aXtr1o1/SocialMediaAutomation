@@ -77,6 +77,7 @@ class WorkflowService:
         self.kpi = KPIService()
         self.processing = ProcessingService()
         self.reputation = DomainReputationService()
+        self._status_cache: dict[str, str | None] = {}
 
     def begin(
         self,
@@ -91,21 +92,24 @@ class WorkflowService:
         for source in sources:
             source["subdomain_names"] = [subdomain_names.get(str(sid), "") for sid in source.get("subdomain_ids", [])]
 
+        queued_id = self._status("queued")
+        running_id = self._status("running")
+
         run_row = self.db.table("workflow_runs").insert({"domain_id": domain["id"], "created_by": user_id,
-            "status_id": self._status("queued"), "total_sources": len(sources)}).execute().data or []
+            "status_id": queued_id, "total_sources": len(sources)}).execute().data or []
         workflow_run_id = str(run_row[0]["id"]) if run_row else None
         if not workflow_run_id:
             raise RuntimeError("Could not start the sources run")
-        self.db.table("workflow_runs").update({"status_id": self._status("running"),
+        self.db.table("workflow_runs").update({"status_id": running_id,
             "started_at": datetime.now(timezone.utc).isoformat()}).eq("id", workflow_run_id).execute()
         jobs: dict[str, str] = {}
         for source in sources:
             row = self.db.table("crawler_jobs").insert({"source_id": source["id"], "created_by": user_id,
-                "workflow_run_id": workflow_run_id, "status_id": self._status("queued")}).execute().data or []
+                "workflow_run_id": workflow_run_id, "status_id": queued_id}).execute().data or []
             if row:
                 jobs[str(source["id"])] = row[0]["id"]
         for job_id in jobs.values():
-            self.db.table("crawler_jobs").update({"status_id": self._status("running"),
+            self.db.table("crawler_jobs").update({"status_id": running_id,
                 "started_at": datetime.now(timezone.utc).isoformat()}).eq("id", job_id).execute()
 
         _RUNS[workflow_run_id] = {
@@ -319,6 +323,7 @@ class WorkflowService:
 
             crawl_results = await self.crawler.crawl(
                 sources,
+                user_id=str(row.get("user_id") or ""),
                 on_source_start=on_source_start,
                 on_source_done=on_source_done,
                 on_article_found=on_article_found,
@@ -546,9 +551,14 @@ class WorkflowService:
         return articles
 
     def _status(self, name: str) -> str | None:
-        response = self.db.table("statuses").select("id").eq("status_name", name.lower()).limit(1).execute()
+        key = name.lower()
+        if key in self._status_cache:
+            return self._status_cache[key]
+        response = self.db.table("statuses").select("id").eq("status_name", key).limit(1).execute()
         rows = (response.data if response is not None else None) or []
-        return rows[0]["id"] if rows else None
+        status_id = rows[0]["id"] if rows else None
+        self._status_cache[key] = status_id
+        return status_id
 
 
 def spawn_workflow(run_id: str) -> None:

@@ -1,4 +1,4 @@
-import { formatHashtag, type GeneratedPost } from '../../lib/generations'
+import type { GeneratedPost } from '../../lib/generations'
 import { MaterialIcon } from '../ui/MaterialIcon'
 
 type LinkedInPreviewProps = {
@@ -8,9 +8,6 @@ type LinkedInPreviewProps = {
 }
 
 export function LinkedInPreview({ post, authorName, authorSubtitle }: LinkedInPreviewProps) {
-  const paragraphs = [post.hook, ...post.body_paragraphs].filter(Boolean)
-  const hashtags = post.hashtags.map(formatHashtag).filter(Boolean)
-
   return (
     <div className="mx-auto max-w-[552px] overflow-hidden rounded-xl bg-surface shadow-md">
       <div className="flex items-start gap-3 p-md">
@@ -31,26 +28,7 @@ export function LinkedInPreview({ post, authorName, authorSubtitle }: LinkedInPr
       </div>
 
       <div className="space-y-4 px-md pb-md font-body-md text-body-md text-on-surface">
-        {paragraphs.length ? (
-          paragraphs.map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>)
-        ) : (
-          <p className="whitespace-pre-wrap">{post.full_post}</p>
-        )}
-
-        {post.key_points.length ? (
-          <p>
-            {post.key_points.map((point, index) => (
-              <span key={point.slice(0, 32)}>
-                {index + 1}️⃣ {point}
-                {index < post.key_points.length - 1 ? <br /> : null}
-              </span>
-            ))}
-          </p>
-        ) : null}
-
-        {post.closing_cta ? <p>{post.closing_cta}</p> : null}
-
-        {hashtags.length ? <p className="font-medium text-primary">{hashtags.join(' ')}</p> : null}
+        <p className="whitespace-pre-wrap">{post.full_post}</p>
       </div>
 
       <div className="flex items-center justify-between border-t border-surface-variant bg-surface-container-lowest px-md py-sm text-on-surface-variant">

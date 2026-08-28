@@ -77,9 +77,9 @@ export function SignInPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             labelExtra={
-              <a className={`text-[14px] ${authClasses.link}`} href="#">
+              <Link className={`text-[14px] ${authClasses.link}`} to={paths.forgotPassword}>
                 Forgot password?
-              </a>
+              </Link>
             }
             rightSlot={
               <button

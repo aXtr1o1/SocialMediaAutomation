@@ -15,6 +15,7 @@ import { SourcesPage } from './pages/app/SourcesPage'
 import { ProfilePage } from './pages/app/ProfilePage'
 import { SignInPage } from './pages/SignInPage'
 import { SignUpPage } from './pages/SignUpPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 
 export default function App() {
   return (
@@ -36,6 +37,14 @@ export default function App() {
               element={
                 <GuestRoute>
                   <SignUpPage />
+                </GuestRoute>
+              }
+            />
+            <Route
+              path={paths.forgotPassword}
+              element={
+                <GuestRoute>
+                  <ForgotPasswordPage />
                 </GuestRoute>
               }
             />

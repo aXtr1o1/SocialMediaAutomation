@@ -22,7 +22,8 @@ export function SourcesPage() {
   }, [locationSelection])
 
   const { articles, domainName, isRunning, progress, error } = useSourcesWorkflow(selection)
-  const scope = (selection?.subdomainNames || []).filter(Boolean).join(', ')
+  const selectedDomain = domainName || selection?.domainName || ''
+  const selectedSubdomains = (selection?.subdomainNames || []).filter(Boolean)
 
   if (!selection) {
     return (
@@ -40,11 +41,44 @@ export function SourcesPage() {
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-5xl flex-col gap-lg p-lg lg:p-xl">
-      <div className="flex flex-col gap-xs">
-        <h1 className="font-display-lg text-display-lg text-on-surface">Sources</h1>
-        <p className="font-body-lg text-body-lg text-on-surface-variant">
-          Related content found for your selected {domainName || 'chosen'} subdomains.
-        </p>
+      <div className="flex flex-col gap-md">
+        <div className="flex flex-col gap-xs">
+          <h1 className="font-display-lg text-display-lg text-on-surface">Sources</h1>
+          <p className="font-body-lg text-body-lg text-on-surface-variant">
+            Related content for your selected domain and subdomains.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest px-md py-md">
+          <p className="font-label-sm text-label-sm uppercase tracking-widest text-on-surface-variant">
+            Selected topics
+          </p>
+          <div className="mt-sm flex flex-col gap-sm">
+            <div>
+              <p className="font-label-md text-label-md text-on-surface-variant">Domain</p>
+              <p className="mt-0.5 font-headline-sm text-headline-sm text-on-surface">
+                {selectedDomain || '—'}
+              </p>
+            </div>
+            <div>
+              <p className="font-label-md text-label-md text-on-surface-variant">Subdomains</p>
+              {selectedSubdomains.length ? (
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {selectedSubdomains.map((name) => (
+                    <li
+                      key={name}
+                      className="rounded-md border border-surface-variant bg-surface px-2.5 py-1 font-label-md text-label-md text-on-surface"
+                    >
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-0.5 font-body-md text-body-md text-on-surface-variant">—</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center justify-end border-b border-surface-variant py-sm">
@@ -55,7 +89,13 @@ export function SourcesPage() {
 
       {error ? <p className="font-body-md text-body-md text-error">{error}</p> : null}
 
-      {isRunning ? <SourcesLoadingCard scope={scope} progress={progress} /> : null}
+      {isRunning ? (
+        <SourcesLoadingCard
+          domainName={selectedDomain}
+          subdomainNames={selectedSubdomains}
+          progress={progress}
+        />
+      ) : null}
 
       {!isRunning && !error && articles.length === 0 ? (
         <p className="font-body-md text-body-md text-on-surface-variant">

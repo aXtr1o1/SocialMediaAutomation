@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.security import get_authenticated_supabase_user
@@ -8,7 +9,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/run", 
+    "/run",
     response_model=WorkflowRunResponse,
 )
 async def run_content_workflow(
@@ -20,15 +21,20 @@ async def run_content_workflow(
             str(current_user.id),
             domain_id=str(payload.domain_id),
             subdomain_ids=[
-                str(item) 
+                str(item)
                 for item in payload.subdomain_ids
             ],
         )
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail=str(exc)
-            ) from exc
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except (httpx.TransportError, httpx.TimeoutException) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is temporarily unavailable. Please try again.",
+        ) from exc
 
     run_id = started.get("workflow_run_id")
     if run_id:
@@ -39,15 +45,15 @@ async def run_content_workflow(
 
 
 @router.get(
-    "/run/{workflow_run_id}", 
+    "/run/{workflow_run_id}",
     response_model=WorkflowRunResponse,
-    )
+)
 def get_content_workflow(
     workflow_run_id: str,
     current_user=Depends(get_authenticated_supabase_user),
 ):
     snapshot = WorkflowService().get_run(
-        workflow_run_id, 
+        workflow_run_id,
         str(current_user.id),
     )
     if not snapshot:
@@ -61,9 +67,9 @@ def get_content_workflow(
 
 
 @router.post(
-    "/run/{workflow_run_id}/cancel", 
+    "/run/{workflow_run_id}/cancel",
     response_model=WorkflowRunResponse,
-    )
+)
 def cancel_content_workflow(
     workflow_run_id: str,
     current_user=Depends(get_authenticated_supabase_user),
