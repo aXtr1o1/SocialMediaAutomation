@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from backend.app.services import generation_service
 from fastapi import HTTPException, status
 
 from app.core.supabase import get_supabase_client
@@ -23,7 +22,7 @@ class PublicationServices:
         self.bluesky_services = BlueskyService()
 
     async def publish(self, *,  user_id: UUID, draft_id: UUID, connected_account_id: UUID) -> dict[str, Any]:
-        draft = generation_service.get_draft(user_id=user_id, draft_id=draft_id)
+        draft = self.generation_service.get_draft(user_id=user_id, draft_id=draft_id)
         if not draft:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
