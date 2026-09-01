@@ -217,6 +217,7 @@ class AccountService:
         provider_handle: str | None = None,
         oauth_endpoint: str | None = None,
         scopes: str | None = None,
+        drop_private_key_pem: str | None = None,
         account_type: str = "oauth",
     ) -> dict[str, Any]:
 
@@ -269,6 +270,11 @@ class AccountService:
             "oauth_endpoint": oauth_endpoint,
             "scopes": scopes,
             "account_type": account_type,
+            "dpop_private_key_encrypted": (
+                self._encrypt_token(drop_private_key_pem)
+                if drop_private_key_pem
+                else None   
+            ),
             "updated_at": now,
             "is_enabled": should_enable,
             "deleted_at": None,

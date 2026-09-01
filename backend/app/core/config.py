@@ -82,6 +82,9 @@ class Settings(BaseSettings):
         "https://api.linkedin.com/v2/userinfo"
     )
 
+    linkedin_posts_url: str = (
+        "https://api.linkedin.com/rest/posts"
+    )
     linkedin_platform_name: str = "linkedin"
 
     # -----------------------------------------------------------------------

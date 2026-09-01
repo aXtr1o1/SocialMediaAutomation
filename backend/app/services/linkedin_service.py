@@ -94,3 +94,61 @@ class LinkedInService:
             )
 
         return response.json()
+
+    async def publish_post(self, *, access_token: str, author_id: str, content: str) -> dict:
+        if not access_token:
+            raise ValueError("Access token is required to publish a post.")
+
+        if not author_id:
+            raise ValueError("Author ID is required to publish a post.")
+
+        if not content or not content.strip():
+            raise ValueError("Content is required to publish a post.")
+
+        if author_id.startswith("urn:li:person:"):
+            author_urn = author_id
+        else:
+            author_urn = f"urn:li:person:{author_id}"
+        
+        payload = {
+            "author": author_urn,
+            "commentary": content.strip(),
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": []
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202604",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                self.settings.linkedin_posts_url,
+                json=payload,
+                headers=headers,
+            )
+
+        if response.is_error:
+            raise RuntimeError(
+                f"Failed to publish post on LinkedIn: {response.text}"
+            )
+        platform_post_id = response.headers.get("x-restli-id")
+        if not platform_post_id:
+            raise RuntimeError(
+                f"Failed to retrieve platform post ID from LinkedIn response headers."  
+            )
+        return {
+            "platform": self.settings.linkedin_platform_name,
+            "platform_post_id": platform_post_id,
+            "status_code": response.status_code,
+            "response": (response.json() if response.content else None),
+        }
