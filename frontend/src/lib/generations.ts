@@ -126,11 +126,31 @@ export function platformsFromChoice(choice: PlatformChoice): GeneratePlatform[] 
   return choice === 'both' ? ['linkedin', 'bluesky'] : [choice]
 }
 
-export async function generatePosts(articleId: string, platforms: GeneratePlatform[]) {
-  const result = await apiFetch<{
+export type GenerationJob = {
+  generation_id: string
+  article_id: string
+  status:
+    | 'QUEUED'
+    | 'RUNNING'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'CANCELLED'
+  posts: GeneratedPost[]
+  drafts: GenerationDraft[]
+  error?: string | null
+}
+
+export async function generatePosts(
+  articleId: string,
+  platforms: GeneratePlatform[],
+  onProgress?: (job: GenerationJob) => void,
+) {
+  const started = await apiFetch<{
+    generation_id: string
     article_id: string
+    status: GenerationJob['status']
     posts: GeneratedPost[]
-    drafts?: ApiDraft[]
+    drafts: ApiDraft[]
   }>('/generations', {
     method: 'POST',
     body: JSON.stringify({
@@ -139,11 +159,69 @@ export async function generatePosts(articleId: string, platforms: GeneratePlatfo
     }),
   })
 
-  return {
-    article_id: result.article_id,
-    posts: result.posts,
-    drafts: (result.drafts || []).map(mapDraft),
+  let latest: GenerationJob = {
+    generation_id: started.generation_id,
+    article_id: started.article_id,
+    status: started.status,
+    posts: started.posts || [],
+    drafts: (started.drafts || []).map(mapDraft),
   }
+
+  onProgress?.(latest)
+
+  while (
+    latest.status !== 'COMPLETED' &&
+    latest.status !== 'FAILED' &&
+    latest.status !== 'CANCELLED'
+  ) {
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, 750),
+    )
+
+    latest = await apiFetch<{
+      generation_id: string
+      article_id: string
+      status: GenerationJob['status']
+      posts: GeneratedPost[]
+      drafts: ApiDraft[]
+      error?: string | null
+    }>(
+      `/generations/jobs/${started.generation_id}`,
+    ).then((job) => ({
+      ...job,
+      drafts: (job.drafts || []).map(mapDraft),
+    }))
+
+    onProgress?.(latest)
+  }
+
+  if (latest.status === 'FAILED') {
+    throw new Error(
+      latest.error || 'Generation failed',
+    )
+  }
+
+  if (latest.status === 'CANCELLED') {
+    throw new Error('Generation was stopped.')
+  }
+
+  return {
+    article_id: latest.article_id,
+    posts: latest.posts,
+    drafts: latest.drafts,
+    generation_id: latest.generation_id,
+  }
+}
+
+export async function cancelGeneration(
+  generationId: string,
+) {
+  return apiFetch<GenerationJob>(
+    `/generations/jobs/${generationId}/cancel`,
+    {
+      method: 'POST',
+    },
+  )
 }
 
 export async function regenerateSnippet(input: {
@@ -289,4 +367,23 @@ function escapeRegExp(value: string) {
 export function formatHashtag(tag: string) {
   const value = tag.trim().replace(/^#/, '')
   return value ? `#${value}` : ''
+}
+
+export async function saveGenerationDraft(
+  draftId: string,
+  fullPost: string,
+) {
+  const draft = await apiFetch<ApiDraft>(
+    `/generations/drafts/${draftId}/save`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        full_post: fullPost,
+        label: 'User Draft',
+        source: 'restore',
+      }),
+    },
+  )
+
+  return mapDraft(draft)
 }

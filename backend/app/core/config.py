@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_secret_key: SecretStr
     supabase_anon_key: SecretStr = SecretStr("")
+    
+    # -----------------------------------------------------------------------
+    # Redis
+    # -----------------------------------------------------------------------
+
+    redis_url: str = "redis://127.0.0.1:6379/0"
+
+    # Workflow state survives browser refresh/navigation and is retained
+    # even after the authentication session expires.
+    workflow_state_ttl_seconds: int = 60 * 60 * 24 * 7
+
+    # Generation jobs should not live forever.
+    generation_job_ttl_seconds: int = 60 * 60 * 24
 
     # -----------------------------------------------------------------------
     # Gemini

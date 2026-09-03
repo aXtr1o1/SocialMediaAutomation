@@ -10,11 +10,18 @@ from app.prompts.linkedin_post import LINKEDIN_POST_PROMPT
 from app.prompts.regenerate_snippet import REGENERATE_SNIPPET_PROMPT
 from app.services.gemini_service import GeminiService
 
+from uuid import uuid4
+
+from app.services.redis_state_service import (
+    RedisStateService,
+)
+
 log = logging.getLogger(__name__)
 
 CONTENT_LIMIT = 24000
 BLUESKY_CHAR_LIMIT = 300
 CONTEXT_WINDOW = 280
+_GENERATION_TASKS: dict[str, asyncio.Task] = {}
 
 
 def _fill(template: str, values: dict[str, str]) -> str:
@@ -79,6 +86,7 @@ class GenerationService:
     def __init__(self) -> None:
         self.db = get_supabase_client()
         self.gemini = GeminiService()
+        self.redis = RedisStateService()
 
     async def create(self, *, user_id: str, article_id: str, platforms: list[str]) -> dict[str, Any]:
         article = self._load_article(article_id, user_id=user_id)
@@ -119,26 +127,36 @@ class GenerationService:
         draft_id: str | None = None,
         label: str | None = None,
     ) -> dict[str, Any]:
-        """Rewrite only the pasted snippet; merge back so the rest of the post is unchanged."""
+
         post = _canonicalize_copy_text(full_post)
         target = target_text
+
         if not post.strip():
             raise ValueError("Post content is empty")
+
         if not target.strip():
             raise ValueError("Paste the exact text you want to change")
+
         if not instruction.strip():
             raise ValueError("Add a short comment describing what to change")
 
         matches = _find_flexible_matches(post, target)
+
         if not matches:
-            raise ValueError("That text was not found in the post. Copy and paste it exactly.")
+            raise ValueError(
+                "That text was not found in the post. Copy and paste it exactly."
+            )
+
         if len(matches) > 1:
-            raise ValueError("That text appears more than once. Paste a longer unique section.")
+            raise ValueError(
+                "That text appears more than once. Paste a longer unique section."
+            )
 
         start, end = matches[0]
+
         matched = post[start:end]
-        before = post[max(0, start - CONTEXT_WINDOW) : start]
-        after = post[end : end + CONTEXT_WINDOW]
+        before = post[max(0, start - CONTEXT_WINDOW):start]
+        after = post[end:end + CONTEXT_WINDOW]
 
         prompt = _fill(
             REGENERATE_SNIPPET_PROMPT,
@@ -150,12 +168,21 @@ class GenerationService:
                 "after_context": after,
             },
         )
+
+
         payload = await self.gemini.generate_json(prompt)
-        replacement = _to_plain_social_text(str(payload.get("replacement_text") or ""))
+
+        replacement = _to_plain_social_text(
+            str(payload.get("replacement_text") or "")
+        )
+
         if not replacement:
-            raise ValueError("Could not regenerate that section. Try a clearer comment.")
+            raise ValueError(
+                "Could not regenerate that section. Try a clearer comment."
+            )
 
         merged = post[:start] + replacement + post[end:]
+
         result: dict[str, Any] = {
             "platform": platform,
             "original_full_post": post,
@@ -168,7 +195,6 @@ class GenerationService:
             "draft": None,
         }
 
-        # Persist even if Review was opened without a draft (older generate / missing drafts).
         if not draft_id and article_id:
             seeded = self._create_draft_with_original(
                 user_id=user_id,
@@ -176,7 +202,10 @@ class GenerationService:
                 platform=platform,
                 full_post=post,
             )
+
             draft_id = str(seeded["id"])
+
+
 
         if draft_id:
             version = self.add_version(
@@ -189,13 +218,17 @@ class GenerationService:
                 instruction=instruction.strip(),
                 replacement_text=replacement,
             )
-            draft = self.get_draft(user_id=user_id, draft_id=draft_id)
+
+            draft = self.get_draft(
+                user_id=user_id,
+                draft_id=draft_id,
+            )
+
             result["version"] = version
             result["draft_id"] = draft_id
             result["draft"] = draft
 
         return result
-
     def get_draft(self, *, user_id: str, draft_id: str) -> dict[str, Any]:
         draft = self._get_owned_draft(user_id=user_id, draft_id=draft_id)
         versions = self._list_versions(draft_id)
@@ -503,3 +536,154 @@ class GenerationService:
     def _hashtag(self, value: Any) -> str:
         tag = str(value or "").strip().lstrip("#").replace(" ", "")
         return tag
+
+    def create_job(
+        self,
+        *,
+        user_id: str,
+        article_id: str,
+        platforms: list[str],
+    ) -> dict[str, Any]:
+        generation_id = str(uuid4())
+
+        job = {
+            "generation_id": generation_id,
+            "user_id": user_id,
+            "article_id": article_id,
+            "platforms": platforms,
+            "status": "QUEUED",
+            "posts": [],
+            "drafts": [],
+            "error": None,
+        }
+
+        self.redis.save_generation_job(
+            generation_id,
+            job,
+        )
+
+        return job
+    
+    async def run_job(
+        self,
+        generation_id: str,
+    ) -> None:
+        job = self.redis.get_generation_job(
+            generation_id
+        )
+
+        if not job:
+            return
+
+        self.redis.update_generation_job(
+            generation_id,
+            status="RUNNING",
+        )
+
+        try:
+            result = await self.create(
+                user_id=str(job["user_id"]),
+                article_id=str(job["article_id"]),
+                platforms=list(job["platforms"]),
+            )
+
+            current = self.redis.get_generation_job(
+                generation_id
+            )
+
+            if not current:
+                return
+
+            if current.get("status") == "CANCELLED":
+                return
+
+            self.redis.update_generation_job(
+                generation_id,
+                status="COMPLETED",
+                posts=result.get("posts") or [],
+                drafts=result.get("drafts") or [],
+            )
+
+            self.redis.update_session(
+                str(job["user_id"]),
+                current_workflow="content_generation",
+                current_step="review",
+                selected_source_posts=(
+                    self.redis.get_session(
+                        str(job["user_id"])
+                    ).get("selected_source_posts")
+                    or []
+                ),
+                generated_content=result.get("posts") or [],
+                generation_drafts=result.get("drafts") or [],
+                target_platforms=list(
+                    job["platforms"]
+                ),
+                generation_status="COMPLETED",
+            )
+
+        except asyncio.CancelledError:
+            self.redis.update_generation_job(
+                generation_id,
+                status="CANCELLED",
+            )
+
+            self.redis.update_session(
+                str(job["user_id"]),
+                generation_status="CANCELLED",
+            )
+
+        except Exception as exc:
+            log.exception(
+                "generation_job_failed generation_id=%s",
+                generation_id,
+            )
+
+            self.redis.update_generation_job(
+                generation_id,
+                status="FAILED",
+                error=str(exc)[:1000],
+            )
+
+            self.redis.update_session(
+                str(job["user_id"]),
+                generation_status="FAILED",
+            )
+
+    def cancel_job(
+        self,
+        generation_id: str,
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        job = self.redis.get_generation_job(
+            generation_id
+        )
+
+        if not job:
+            return None
+
+        if str(job.get("user_id")) != str(user_id):
+            return None
+
+        if job.get("status") in {
+            "COMPLETED",
+            "FAILED",
+            "CANCELLED",
+        }:
+            return job
+
+        self.redis.update_generation_job(
+            generation_id,
+            status="CANCELLED",
+        )
+
+        task = _GENERATION_TASKS.get(
+            generation_id
+        )
+
+        if task and not task.done():
+            task.cancel()
+
+        return self.redis.get_generation_job(
+            generation_id
+        )

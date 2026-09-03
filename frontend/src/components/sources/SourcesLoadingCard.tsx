@@ -27,41 +27,76 @@ function loadPercent(progress: SourcesLoadProgress | null) {
   if (!progress) {
     return 3
   }
+
   if (progress.stage === 'completed') {
     return 100
   }
 
   const sites = progress.sources_total
-    ? Math.min(1, progress.sources_done / Math.max(1, progress.sources_total))
+    ? Math.min(
+        1,
+        progress.sources_done /
+          Math.max(1, progress.sources_total),
+      )
     : 0
 
   if (uiStage(progress.stage) === 'matching') {
     const total = progress.kpi_passed || 0
-    const ratio = total > 0 ? Math.min(1, progress.match_passed / total) : 0
+    const ratio =
+      total > 0
+        ? Math.min(1, progress.match_passed / total)
+        : 0
+
     return Math.min(99, 70 + Math.round(ratio * 29))
   }
 
   if (progress.stage === 'kpi') {
     const total = progress.crawled || 0
-    const reviewed = total > 0 ? Math.min(1, (progress.checked ?? 0) / total) : 0
-    return Math.min(70, 52 + Math.round(reviewed * 18))
+    const reviewed =
+      total > 0
+        ? Math.min(1, (progress.checked ?? 0) / total)
+        : 0
+
+    return Math.min(
+      70,
+      52 + Math.round(reviewed * 18),
+    )
   }
 
-  const pageBoost = progress.pages_seen ? Math.min(8, Math.floor(progress.pages_seen / 5)) : 0
+  const pageBoost = progress.pages_seen
+    ? Math.min(
+        8,
+        Math.floor(progress.pages_seen / 5),
+      )
+    : 0
+
   const floor = progress.current_site ? 10 : 4
-  return Math.min(52, Math.max(floor, Math.round(sites * 44) + pageBoost))
+
+  return Math.min(
+    52,
+    Math.max(
+      floor,
+      Math.round(sites * 44) + pageBoost,
+    ),
+  )
 }
 
-function softCap(progress: SourcesLoadProgress | null, base: number) {
+function softCap(
+  progress: SourcesLoadProgress | null,
+  base: number,
+) {
   if (!progress || progress.stage === 'completed') {
     return base
   }
+
   if (uiStage(progress.stage) === 'matching') {
     return Math.min(99, base + 3)
   }
+
   if (progress.stage === 'kpi') {
     return Math.min(69, base + 4)
   }
+
   return Math.min(51, base + 5)
 }
 
@@ -76,9 +111,17 @@ function MetricCard({
 }) {
   return (
     <div className="flex h-[92px] min-w-0 flex-col justify-between rounded-xl bg-surface-container-low px-md py-md">
-      <p className="font-label-sm text-label-sm text-on-surface-variant">{label}</p>
-      <p className="truncate font-headline-sm text-headline-sm text-on-surface tabular-nums">{value}</p>
-      <p className="truncate font-label-sm text-label-sm text-on-surface-variant">{hint}</p>
+      <p className="font-label-sm text-label-sm text-on-surface-variant">
+        {label}
+      </p>
+
+      <p className="truncate font-headline-sm text-headline-sm text-on-surface tabular-nums">
+        {value}
+      </p>
+
+      <p className="truncate font-label-sm text-label-sm text-on-surface-variant">
+        {hint}
+      </p>
     </div>
   )
 }
@@ -87,24 +130,37 @@ type SourcesLoadingCardProps = {
   domainName?: string
   subdomainNames?: string[]
   progress: SourcesLoadProgress | null
+  onStop?: () => void
+  isStopping?: boolean
 }
 
 export function SourcesLoadingCard({
   domainName = '',
   subdomainNames = [],
   progress,
+  onStop,
+  isStopping = false,
 }: SourcesLoadingCardProps) {
   const stage = progress?.stage || 'crawling'
   const current = uiStage(stage)
   const basePercent = loadPercent(progress)
-  const [displayPercent, setDisplayPercent] = useState(basePercent)
+
+  const [displayPercent, setDisplayPercent] =
+    useState(basePercent)
 
   const headline =
     progress?.activity ||
     progress?.message ||
-    (progress?.current_site ? `Scanning ${progress.current_site}…` : 'Preparing your source search…')
+    (progress?.current_site
+      ? `Scanning ${progress.current_site}…`
+      : 'Preparing your source search…')
 
-  const activityLog = (progress?.activity_log || []).filter(Boolean).slice(0, 5)
+  const activityLog = (
+    progress?.activity_log || []
+  )
+    .filter(Boolean)
+    .slice(0, 5)
+
   const sitesTotal = progress?.sources_total || 0
   const sitesDone = progress?.sources_done || 0
   const found = progress?.crawled || 0
@@ -113,68 +169,131 @@ export function SourcesLoadingCard({
   const topicCount = subdomainNames.length
 
   useEffect(() => {
-    setDisplayPercent((prev) => Math.max(prev, basePercent))
+    setDisplayPercent((prev) =>
+      Math.max(prev, basePercent),
+    )
   }, [basePercent])
 
   useEffect(() => {
     const cap = softCap(progress, basePercent)
+
     const timer = window.setInterval(() => {
       setDisplayPercent((prev) => {
         if (progress?.stage === 'completed') {
           return 100
         }
+
         if (prev >= cap) {
           return prev
         }
-        return Math.min(cap, Math.round((prev + 0.4) * 10) / 10)
+
+        return Math.min(
+          cap,
+          Math.round((prev + 0.4) * 10) / 10,
+        )
       })
     }, 400)
+
     return () => window.clearInterval(timer)
   }, [basePercent, progress, progress?.stage])
 
-  const shownPercent = Math.min(100, Math.round(displayPercent))
-  const findingDone = current === 'matching' || stage === 'completed'
-  const matchingActive = current === 'matching' && stage !== 'completed'
+  const shownPercent = Math.min(
+    100,
+    Math.round(displayPercent),
+  )
+
+  const findingDone =
+    current === 'matching' ||
+    stage === 'completed'
+
+  const matchingActive =
+    current === 'matching' &&
+    stage !== 'completed'
 
   return (
     <section className="overflow-hidden rounded-2xl border border-surface-variant bg-surface-container-lowest shadow-sm">
       <div className="border-b border-surface-variant bg-gradient-to-br from-primary/10 via-surface-container-lowest to-surface-container-low px-lg py-lg">
         <div className="flex min-w-0 items-start gap-md">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-sm">
-            <MaterialIcon name="travel_explore" className="animate-pulse text-[24px]" />
+            <MaterialIcon
+              name="travel_explore"
+              className="animate-pulse text-[24px]"
+            />
           </div>
-          <div className="min-w-0">
-            <p className="font-label-sm text-label-sm text-primary">Live source search</p>
+
+          <div className="min-w-0 flex-1">
+            <p className="font-label-sm text-label-sm text-primary">
+              Live source search
+            </p>
+
             <h2 className="mt-1 font-headline-sm text-headline-sm text-on-surface">
               {domainName
                 ? `Searching ${domainName}`
                 : 'Looking for matching articles'}
             </h2>
+
             <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
               {topicCount
-                ? `${topicCount} selected subdomain${topicCount === 1 ? '' : 's'}`
+                ? `${topicCount} selected subdomain${
+                    topicCount === 1 ? '' : 's'
+                  }`
                 : 'Using your Discover selection'}
             </p>
+
             <p
               key={headline}
               className="mt-2 line-clamp-2 font-body-md text-body-md text-on-surface transition-opacity duration-300"
             >
               {headline}
             </p>
+
+            {onStop ? (
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={isStopping}
+                className="mt-md inline-flex items-center gap-2 rounded-lg border border-error/40 px-4 py-2 font-label-md text-label-md text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <MaterialIcon
+                  name={
+                    isStopping
+                      ? 'progress_activity'
+                      : 'stop_circle'
+                  }
+                  className={
+                    isStopping
+                      ? 'animate-spin text-[18px]'
+                      : 'text-[18px]'
+                  }
+                />
+
+                {isStopping
+                  ? 'Stopping…'
+                  : 'Stop search'}
+              </button>
+            ) : null}
           </div>
         </div>
 
         <div className="mt-lg">
           <div className="mb-xs flex items-center justify-between gap-sm">
             <span className="font-label-md text-label-md text-on-surface">
-              {current === 'matching' ? 'Matching articles to your topics' : 'Finding articles from mapped sites'}
+              {current === 'matching'
+                ? 'Matching articles to your topics'
+                : 'Finding articles from mapped sites'}
             </span>
-            <span className="font-label-md text-label-md text-primary tabular-nums">{shownPercent}%</span>
+
+            <span className="font-label-md text-label-md text-primary tabular-nums">
+              {shownPercent}%
+            </span>
           </div>
+
           <div className="h-2.5 overflow-hidden rounded-full bg-surface-container-high">
             <div
               className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-              style={{ width: `${shownPercent}%` }}
+              style={{
+                width: `${shownPercent}%`,
+              }}
             >
               <div className="h-full w-full animate-smap-shimmer bg-gradient-to-r from-primary via-white/30 to-primary bg-[length:200%_100%]" />
             </div>
@@ -184,12 +303,22 @@ export function SourcesLoadingCard({
         <div className="mt-md grid grid-cols-2 gap-sm">
           <div
             className={`rounded-xl px-md py-sm ${
-              !findingDone ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest text-on-surface'
+              !findingDone
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface-container-lowest text-on-surface'
             }`}
           >
-            <p className="font-label-sm text-label-sm opacity-80">Step 1</p>
-            <p className="font-label-md text-label-md">{findingDone ? 'Articles found' : 'Finding articles'}</p>
+            <p className="font-label-sm text-label-sm opacity-80">
+              Step 1
+            </p>
+
+            <p className="font-label-md text-label-md">
+              {findingDone
+                ? 'Articles found'
+                : 'Finding articles'}
+            </p>
           </div>
+
           <div
             className={`rounded-xl px-md py-sm ${
               matchingActive
@@ -199,9 +328,14 @@ export function SourcesLoadingCard({
                   : 'bg-surface-container-high/70 text-on-surface-variant'
             }`}
           >
-            <p className="font-label-sm text-label-sm opacity-80">Step 2</p>
+            <p className="font-label-sm text-label-sm opacity-80">
+              Step 2
+            </p>
+
             <p className="font-label-md text-label-md">
-              {stage === 'completed' ? 'Matching complete' : 'Matching to topics'}
+              {stage === 'completed'
+                ? 'Matching complete'
+                : 'Matching to topics'}
             </p>
           </div>
         </div>
@@ -211,14 +345,34 @@ export function SourcesLoadingCard({
         <div className="grid grid-cols-3 gap-sm">
           <MetricCard
             label="Sites"
-            value={sitesTotal > 0 ? `${sitesDone}/${sitesTotal}` : '—'}
-            hint={sitesTotal > 0 ? (sitesDone >= sitesTotal ? 'All checked' : 'In progress') : 'Starting soon'}
+            value={
+              sitesTotal > 0
+                ? `${sitesDone}/${sitesTotal}`
+                : '—'
+            }
+            hint={
+              sitesTotal > 0
+                ? sitesDone >= sitesTotal
+                  ? 'All checked'
+                  : 'In progress'
+                : 'Starting soon'
+            }
           />
-          <MetricCard label="Found" value={`${found}`} hint="Articles" />
+
+          <MetricCard
+            label="Found"
+            value={`${found}`}
+            hint="Articles"
+          />
+
           <MetricCard
             label="Matched"
             value={`${matched}`}
-            hint={current === 'matching' ? 'Updating' : 'Next step'}
+            hint={
+              current === 'matching'
+                ? 'Updating'
+                : 'Next step'
+            }
           />
         </div>
 
@@ -229,25 +383,41 @@ export function SourcesLoadingCard({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
               </span>
-              <span className="font-label-md text-label-md text-on-surface">Crawling progress</span>
+
+              <span className="font-label-md text-label-md text-on-surface">
+                Crawling progress
+              </span>
             </div>
+
             {currentSite ? (
               <span className="max-w-[50%] truncate rounded-md bg-primary/10 px-2 py-0.5 font-label-sm text-label-sm text-primary">
                 {currentSite}
               </span>
             ) : null}
           </div>
+
           <ul className="flex min-h-[108px] flex-col gap-sm">
-            {(activityLog.length ? activityLog : [headline]).map((line, index) => (
-              <li key={`${index}-${line}`} className="flex items-start gap-sm">
+            {(activityLog.length
+              ? activityLog
+              : [headline]
+            ).map((line, index) => (
+              <li
+                key={`${index}-${line}`}
+                className="flex items-start gap-sm"
+              >
                 <span
                   className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                    index === 0 ? 'bg-primary' : 'bg-outline-variant'
+                    index === 0
+                      ? 'bg-primary'
+                      : 'bg-outline-variant'
                   }`}
                 />
+
                 <span
                   className={`min-w-0 flex-1 truncate font-body-md text-body-md leading-snug ${
-                    index === 0 ? 'text-on-surface' : 'text-on-surface-variant'
+                    index === 0
+                      ? 'text-on-surface'
+                      : 'text-on-surface-variant'
                   }`}
                 >
                   {line}
@@ -255,8 +425,10 @@ export function SourcesLoadingCard({
               </li>
             ))}
           </ul>
+
           <p className="mt-md font-label-sm text-label-sm text-on-surface-variant">
-            This usually takes a few minutes. Blocked sites are skipped automatically.
+            This usually takes a few minutes. Blocked
+            sites are skipped automatically.
           </p>
         </div>
       </div>

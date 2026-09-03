@@ -10,6 +10,7 @@ from app.services.crawler_service import CrawlerService
 from app.services.kpi_service import KPIService
 from app.services.processing_service import ProcessingService
 from app.services.domain_reputation_service import DomainReputationService
+from app.services.redis_state_service import RedisStateService
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class WorkflowService:
     """Enforces: master data -> crawl all -> KPI -> relevance -> processing."""
     def __init__(self) -> None:
         self.db = get_supabase_client()
+        self.redis = RedisStateService()
         self.matching = SourceMatchingService()
         self.crawler = CrawlerService()
         self.kpi = KPIService()
@@ -86,6 +88,38 @@ class WorkflowService:
         domain_id: str,
         subdomain_ids: list[str],
     ) -> dict[str, Any]:
+        
+        if user_id:
+            existing_id = self.redis.get_active_workflow(
+                str(user_id)
+            )
+
+            if existing_id:
+                existing = self.get_run(
+                    existing_id,
+                    user_id,
+                )
+
+                if existing:
+                    existing_status = str(
+                        existing.get("job_status") or ""
+                    )
+
+                    if existing_status not in {
+                        "COMPLETED",
+                        "FAILED",
+                        "PARTIAL",
+                        "CANCELLED",
+                    }:
+                        # IMPORTANT:
+                        # Do not create another workflow.
+                        # Return the already-running workflow.
+                        return existing
+
+                    self.redis.clear_active_workflow(
+                        str(user_id),
+                        existing_id,
+                    )
         domain, selected = self.matching.get_context_for_selection(domain_id, subdomain_ids)
         sources = self.matching.mapped_sources(selected)
         subdomain_names = {str(s["id"]): s.get("name") for s in selected}
@@ -98,6 +132,11 @@ class WorkflowService:
         run_row = self.db.table("workflow_runs").insert({"domain_id": domain["id"], "created_by": user_id,
             "status_id": queued_id, "total_sources": len(sources)}).execute().data or []
         workflow_run_id = str(run_row[0]["id"]) if run_row else None
+        if workflow_run_id and user_id:
+            self.redis.set_active_workflow(
+                str(user_id),
+                workflow_run_id,
+            )
         if not workflow_run_id:
             raise RuntimeError("Could not start the sources run")
         self.db.table("workflow_runs").update({"status_id": running_id,
@@ -135,15 +174,65 @@ class WorkflowService:
                 "checked": 0,
             },
         }
-        return _run_snapshot(workflow_run_id) or {}
+        
+        snapshot = _run_snapshot(workflow_run_id) or {}
 
-    def get_run(self, run_id: str, user_id: str | None) -> dict[str, Any] | None:
+        if user_id:
+            self.redis.update_session(
+                str(user_id),
+                active_workflow_id=workflow_run_id,
+                current_workflow="content_generation",
+                current_step="crawling",
+                selected_source_posts=[],
+                target_platforms=[],
+                generation_status="CRAWLING",
+            )
+
+        self._persist_run(workflow_run_id)
+
+        return snapshot
+
+    def get_run(
+        self,
+        run_id: str,
+        user_id: str | None,
+    ) -> dict[str, Any] | None:
         row = _RUNS.get(run_id)
-        if not row:
+
+        if row:
+            if (
+                user_id
+                and row.get("user_id")
+                and str(row["user_id"]) != str(user_id)
+            ):
+                return None
+
+            return _run_snapshot(run_id)
+
+        if not user_id:
             return None
-        if user_id and row.get("user_id") and str(row["user_id"]) != str(user_id):
+
+        # Redis workflow state is keyed by user_id.
+        persisted = self.redis.get_workflow(str(user_id))
+
+        if not persisted:
             return None
-        return _run_snapshot(run_id)
+
+        if (
+            persisted.get("user_id")
+            and str(persisted["user_id"]) != str(user_id)
+        ):
+            return None
+
+        # Make sure this is the requested workflow.
+        persisted_run_id = str(
+            persisted.get("workflow_run_id") or ""
+        )
+
+        if persisted_run_id != str(run_id):
+            return None
+
+        return persisted
 
     def cancel(self, run_id: str, user_id: str | None) -> dict[str, Any] | None:
         row = _RUNS.get(run_id)
@@ -198,26 +287,87 @@ class WorkflowService:
 
     def _set_progress(self, run_id: str, **values: Any) -> None:
         row = _RUNS.get(run_id)
+
         if not row:
             return
+
         progress = dict(row.get("progress") or {})
         progress.update(values)
         row["progress"] = progress
 
-    def _push_activity(self, run_id: str, line: str, **values: Any) -> None:
+        self._persist_run(run_id)
+
+    def _push_activity(
+        self,
+        run_id: str,
+        line: str,
+        **values: Any,
+    ) -> None:
         row = _RUNS.get(run_id)
+
         if not row:
             return
+
         progress = dict(row.get("progress") or {})
-        log_lines = list(progress.get("activity_log") or [])
+        log_lines = list(
+            progress.get("activity_log") or []
+        )
+
         if not log_lines or log_lines[0] != line:
-            log_lines = [line, *log_lines][:_ACTIVITY_LIMIT]
+            log_lines = [
+                line,
+                *log_lines,
+            ][:_ACTIVITY_LIMIT]
+
         progress.update(values)
         progress["activity"] = line
+
         if "message" not in values:
             progress["message"] = line
+
         progress["activity_log"] = log_lines
         row["progress"] = progress
+
+        self._persist_run(run_id)
+        
+    def _persist_run(self, run_id: str) -> None:
+        row = _RUNS.get(run_id)
+
+        if not row:
+            return
+
+        user_id = row.get("user_id")
+
+        # The current RedisStateService is user-keyed:
+        # workflow:<user_id>
+        if not user_id:
+            return
+
+        snapshot = _run_snapshot(run_id)
+
+        if not snapshot:
+            return
+
+        self.redis.set_workflow(
+            str(user_id),
+            {
+                **snapshot,
+                "user_id": str(user_id),
+                "domain_id": str(
+                    (row.get("domain") or {}).get("id") or ""
+                ),
+                "subdomain_ids": [
+                    str(item.get("id"))
+                    for item in row.get("selected") or []
+                    if item.get("id")
+                ],
+                "selected_sources": [
+                    str(item.get("id"))
+                    for item in row.get("sources") or []
+                    if item.get("id")
+                ],
+            },
+        )
 
     async def execute(self, run_id: str) -> None:
         row = _RUNS.get(run_id)
@@ -485,7 +635,11 @@ class WorkflowService:
                     "failed_sources": len(failed),
                 }
             ).eq("id", run_id).execute()
-            articles = self._to_source_articles(processed, selected)
+            articles = self._to_source_articles(
+                processed,
+                selected,
+            )
+
             row["articles"] = articles
             row["job_status"] = status
             self._push_activity(
@@ -499,21 +653,58 @@ class WorkflowService:
                 sources_total=len(sources),
                 current_site="",
             )
+            if row.get("user_id"):
+                self.redis.update_session(
+                    str(row["user_id"]),
+                    active_workflow_id=run_id,
+                    current_workflow="content_generation",
+                    current_step="select_content",
+                    selected_source_posts=articles,
+                    generation_status="READY",
+                )
+
+                if status in {
+                    "COMPLETED",
+                    "FAILED",
+                    "PARTIAL",
+                }:
+                    self.redis.clear_active_workflow(
+                        str(row["user_id"]),
+                        run_id,
+                    )
         except asyncio.CancelledError:
             log.warning("workflow_cancelled run_id=%s", run_id)
             self._mark_cancelled(run_id, row)
             raise
         except Exception as exc:
-            log.warning("workflow_execute_failed run_id=%s error=%s", run_id, exc, exc_info=True)
+            log.warning(
+                "workflow_execute_failed run_id=%s error=%s",
+                run_id,
+                exc,
+                exc_info=True,
+            )
+
             row["job_status"] = "FAILED"
             row["articles"] = []
-            self._set_progress(run_id, stage="completed", message=str(exc)[:200])
+
+            self._set_progress(
+                run_id,
+                stage="completed",
+                message=str(exc)[:200],
+            )
+
             self.db.table("workflow_runs").update(
                 {
                     "status_id": self._status("FAILED"),
                     "completed_at": datetime.now(timezone.utc).isoformat(),
                 }
             ).eq("id", run_id).execute()
+
+            if row.get("user_id"):
+                self.redis.clear_active_workflow(
+                    str(row["user_id"]),
+                    run_id,
+                )
 
     def _to_source_articles(
         self,

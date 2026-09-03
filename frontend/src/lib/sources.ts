@@ -6,6 +6,28 @@ export type SourcesSelection = {
   domainName: string
   subdomainNames?: string[]
   runId: string
+
+  /*
+   * Persisted source-search state.
+   *
+   * This is important because the frontend's in-memory
+   * Maps disappear after logout/login or a full reload.
+   */
+  searchStatus?:
+    | 'IDLE'
+    | 'RUNNING'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'PARTIAL'
+    | 'CANCELLED'
+
+  /*
+   * Real backend workflow ID.
+   *
+   * If this exists, we reconnect to that workflow instead
+   * of creating a new /processing/run.
+   */
+  workflowRunId?: string | null
 }
 
 export type SourceArticle = {
@@ -45,33 +67,87 @@ export type WorkflowRunResponse = {
 type WorkflowControl = {
   stopPolling: boolean
   workflowRunId: string | null
+
+  /*
+   * Resolves as soon as the backend gives us the
+   * workflow_run_id.
+   *
+   * This prevents Stop from racing the initial POST.
+   */
+  startedPromise: Promise<string | null>
+  resolveStarted: (
+    workflowRunId: string | null,
+  ) => void
 }
 
-const SOURCES_SELECTION_KEY = 'smap.sources.selection'
-const workflowRuns = new Map<string, Promise<WorkflowRunResponse>>()
-const workflowResults = new Map<string, WorkflowRunResponse>()
-const workflowLatest = new Map<string, WorkflowRunResponse>()
-const workflowListeners = new Map<string, Set<(result: WorkflowRunResponse) => void>>()
-const workflowControls = new Map<string, WorkflowControl>()
-const pendingLeaveCancels = new Map<string, number>()
-let rememberedSelection: SourcesSelection | null = null
+const SOURCES_SELECTION_KEY =
+  'smap.sources.selection'
 
-export function isSourcesSelection(value: unknown): value is SourcesSelection {
+const workflowRuns =
+  new Map<
+    string,
+    Promise<WorkflowRunResponse>
+  >()
+
+const workflowResults =
+  new Map<
+    string,
+    WorkflowRunResponse
+  >()
+
+const workflowLatest =
+  new Map<
+    string,
+    WorkflowRunResponse
+  >()
+
+const workflowListeners =
+  new Map<
+    string,
+    Set<
+      (result: WorkflowRunResponse) => void
+    >
+  >()
+
+const workflowControls =
+  new Map<string, WorkflowControl>()
+
+let rememberedSelection:
+  SourcesSelection | null = null
+
+/* -------------------------------------------------------------------------- */
+/* Selection persistence                                                      */
+/* -------------------------------------------------------------------------- */
+
+export function isSourcesSelection(
+  value: unknown,
+): value is SourcesSelection {
   if (!value || typeof value !== 'object') {
     return false
   }
 
   const row = value as SourcesSelection
-  return Boolean(row.domainId && row.runId && Array.isArray(row.subdomainIds) && row.subdomainIds.length)
+
+  return Boolean(
+    row.domainId &&
+      row.runId &&
+      Array.isArray(row.subdomainIds) &&
+      row.subdomainIds.length,
+  )
 }
 
-export function rememberSourcesSelection(selection: SourcesSelection) {
+export function rememberSourcesSelection(
+  selection: SourcesSelection,
+) {
   rememberedSelection = selection
 
   try {
-    sessionStorage.setItem(SOURCES_SELECTION_KEY, JSON.stringify(selection))
+    sessionStorage.setItem(
+      SOURCES_SELECTION_KEY,
+      JSON.stringify(selection),
+    )
   } catch {
-    // Ignore storage failures (private mode, blocked cookies).
+    // Ignore storage failures.
   }
 }
 
@@ -81,8 +157,14 @@ export function getRememberedSourcesSelection() {
   }
 
   try {
-    const raw = sessionStorage.getItem(SOURCES_SELECTION_KEY)
-    const parsed = raw ? JSON.parse(raw) : null
+    const raw =
+      sessionStorage.getItem(
+        SOURCES_SELECTION_KEY,
+      )
+
+    const parsed = raw
+      ? JSON.parse(raw)
+      : null
 
     if (isSourcesSelection(parsed)) {
       rememberedSelection = parsed
@@ -95,222 +177,930 @@ export function getRememberedSourcesSelection() {
   return null
 }
 
-export function getCachedWorkflow(runId: string) {
-  return workflowResults.get(runId) ?? workflowLatest.get(runId) ?? null
-}
+/*
+ * Creates a completely new source-search selection.
+ *
+ * Used ONLY when the user explicitly clicks
+ * "Start Search Again".
+ */
+export function createNewSourcesSelection(
+  selection: SourcesSelection,
+): SourcesSelection {
+  const nextSelection: SourcesSelection = {
+    ...selection,
 
-function isTerminalStatus(status: string) {
-  return status === 'COMPLETED' || status === 'FAILED' || status === 'PARTIAL' || status === 'CANCELLED'
-}
+    runId: crypto.randomUUID(),
 
-function getControl(runId: string) {
-  let control = workflowControls.get(runId)
-  if (!control) {
-    control = { stopPolling: false, workflowRunId: null }
-    workflowControls.set(runId, control)
+    searchStatus: 'IDLE',
+
+    workflowRunId: null,
   }
+
+  rememberSourcesSelection(
+    nextSelection,
+  )
+
+  return nextSelection
+}
+
+/*
+ * Update only the persisted source-search state.
+ */
+export function updateSourcesSelectionStatus(
+  runId: string,
+  status: SourcesSelection['searchStatus'],
+  workflowRunId?: string | null,
+) {
+  const current =
+    getRememberedSourcesSelection()
+
+  if (
+    !current ||
+    current.runId !== runId
+  ) {
+    return
+  }
+
+  const updated: SourcesSelection = {
+    ...current,
+
+    searchStatus: status,
+
+    ...(workflowRunId !== undefined
+      ? {
+          workflowRunId,
+        }
+      : {}),
+  }
+
+  rememberSourcesSelection(updated)
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cached workflow state                                                      */
+/* -------------------------------------------------------------------------- */
+
+export function getCachedWorkflow(
+  runId: string,
+) {
+  return (
+    workflowResults.get(runId) ??
+    workflowLatest.get(runId) ??
+    null
+  )
+}
+
+function isTerminalStatus(
+  status?: string,
+) {
+  return (
+    status === 'COMPLETED' ||
+    status === 'FAILED' ||
+    status === 'PARTIAL' ||
+    status === 'CANCELLED'
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Workflow controls                                                          */
+/* -------------------------------------------------------------------------- */
+
+function createWorkflowControl(): WorkflowControl {
+  let resolveStarted:
+    | ((
+        workflowRunId: string | null,
+      ) => void)
+    | null = null
+
+  const startedPromise =
+    new Promise<string | null>(
+      (resolve) => {
+        resolveStarted = resolve
+      },
+    )
+
+  return {
+    stopPolling: false,
+
+    workflowRunId: null,
+
+    startedPromise,
+
+    resolveStarted: (
+      workflowRunId,
+    ) => {
+      resolveStarted?.(
+        workflowRunId,
+      )
+
+      resolveStarted = null
+    },
+  }
+}
+
+function getControl(
+  runId: string,
+) {
+  let control =
+    workflowControls.get(runId)
+
+  if (!control) {
+    control =
+      createWorkflowControl()
+
+    workflowControls.set(
+      runId,
+      control,
+    )
+  }
+
   return control
 }
 
-function notifyProgress(runId: string, result: WorkflowRunResponse) {
-  workflowLatest.set(runId, result)
+/* -------------------------------------------------------------------------- */
+/* Progress listeners                                                         */
+/* -------------------------------------------------------------------------- */
+
+function notifyProgress(
+  runId: string,
+  result: WorkflowRunResponse,
+) {
+  workflowLatest.set(
+    runId,
+    result,
+  )
+
   if (result.workflow_run_id) {
-    getControl(runId).workflowRunId = result.workflow_run_id
+    getControl(
+      runId,
+    ).workflowRunId =
+      result.workflow_run_id
+
+    updateSourcesSelectionStatus(
+      runId,
+      result.job_status as SourcesSelection['searchStatus'],
+      result.workflow_run_id,
+    )
+  } else {
+    updateSourcesSelectionStatus(
+      runId,
+      result.job_status as SourcesSelection['searchStatus'],
+    )
   }
-  const listeners = workflowListeners.get(runId)
+
+  const listeners =
+    workflowListeners.get(runId)
+
   if (!listeners?.size) {
     return
   }
-  for (const listener of [...listeners]) {
+
+  for (const listener of [
+    ...listeners,
+  ]) {
     listener(result)
   }
 }
 
-function subscribeProgress(runId: string, onProgress: (result: WorkflowRunResponse) => void) {
-  let listeners = workflowListeners.get(runId)
+function subscribeProgress(
+  runId: string,
+  onProgress: (
+    result: WorkflowRunResponse,
+  ) => void,
+) {
+  let listeners =
+    workflowListeners.get(runId)
+
   if (!listeners) {
-    listeners = new Set()
-    workflowListeners.set(runId, listeners)
+    listeners =
+      new Set()
+
+    workflowListeners.set(
+      runId,
+      listeners,
+    )
   }
+
   listeners.add(onProgress)
 
-  const latest = workflowLatest.get(runId) ?? workflowResults.get(runId)
+  const latest =
+    workflowLatest.get(runId) ??
+    workflowResults.get(runId)
+
   if (latest) {
     onProgress(latest)
   }
 
   return () => {
-    listeners?.delete(onProgress)
-    if (listeners && listeners.size === 0) {
-      workflowListeners.delete(runId)
+    listeners?.delete(
+      onProgress,
+    )
+
+    if (
+      listeners &&
+      listeners.size === 0
+    ) {
+      workflowListeners.delete(
+        runId,
+      )
     }
   }
 }
 
-export async function getWorkflowRun(workflowRunId: string) {
-  return apiFetch<WorkflowRunResponse>(`/processing/run/${workflowRunId}`)
+/* -------------------------------------------------------------------------- */
+/* Backend API                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function getWorkflowRun(
+  workflowRunId: string,
+) {
+  return apiFetch<WorkflowRunResponse>(
+    `/processing/run/${workflowRunId}`,
+  )
 }
 
-export async function cancelWorkflowRun(workflowRunId: string) {
-  return apiFetch<WorkflowRunResponse>(`/processing/run/${workflowRunId}/cancel`, {
-    method: 'POST',
-  })
+export async function cancelWorkflowRun(
+  workflowRunId: string,
+) {
+  return apiFetch<WorkflowRunResponse>(
+    `/processing/run/${workflowRunId}/cancel`,
+    {
+      method: 'POST',
+    },
+  )
 }
 
-function ensureWorkflowRequest(selection: SourcesSelection) {
-  const existing = workflowRuns.get(selection.runId)
-  if (existing) {
-    return existing
-  }
+/* -------------------------------------------------------------------------- */
+/* Existing workflow polling                                                  */
+/* -------------------------------------------------------------------------- */
 
-  const control = getControl(selection.runId)
-  control.stopPolling = false
+function pollExistingWorkflow(
+  selection: SourcesSelection,
+  workflowRunId: string,
+) {
+  const control =
+    getControl(selection.runId)
 
-  const request = apiFetch<WorkflowRunResponse>('/processing/run', {
-    method: 'POST',
-    body: JSON.stringify({
-      domain_id: selection.domainId,
-      subdomain_ids: selection.subdomainIds,
-    }),
-  })
-    .then(async (started) => {
-      notifyProgress(selection.runId, started)
-      const workflowRunId = started.workflow_run_id
-      control.workflowRunId = workflowRunId
-      if (!workflowRunId || isTerminalStatus(started.job_status)) {
-        workflowResults.set(selection.runId, started)
-        return started
+  control.workflowRunId =
+    workflowRunId
+
+  const request =
+    (async (): Promise<WorkflowRunResponse> => {
+      let misses = 0
+
+      /*
+       * Get the current state immediately.
+       */
+      try {
+        const current =
+          await getWorkflowRun(
+            workflowRunId,
+          )
+
+        notifyProgress(
+          selection.runId,
+          current,
+        )
+
+        if (
+          isTerminalStatus(
+            current.job_status,
+          )
+        ) {
+          workflowResults.set(
+            selection.runId,
+            current,
+          )
+
+          return current
+        }
+      } catch (error) {
+        misses += 1
+
+        if (misses >= 8) {
+          throw error
+        }
       }
 
-      let misses = 0
+      /*
+       * Continue polling the EXISTING backend
+       * workflow.
+       */
       for (;;) {
-        if (control.stopPolling) {
-          const latest = workflowLatest.get(selection.runId) ?? started
-          return {
-            ...latest,
-            job_status: isTerminalStatus(latest.job_status) ? latest.job_status : 'CANCELLED',
-          }
+        if (
+          control.stopPolling
+        ) {
+          const latest =
+            workflowLatest.get(
+              selection.runId,
+            )
+
+          const stopped: WorkflowRunResponse =
+            {
+              ...(latest ?? {
+                workflow_run_id:
+                  workflowRunId,
+
+                job_status:
+                  'CANCELLED',
+
+                domain_name:
+                  selection.domainName,
+
+                articles: [],
+
+                progress: null,
+              }),
+
+              job_status:
+                'CANCELLED',
+            }
+
+          workflowResults.set(
+            selection.runId,
+            stopped,
+          )
+
+          return stopped
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 750))
-        if (control.stopPolling) {
-          const latest = workflowLatest.get(selection.runId) ?? started
-          return {
-            ...latest,
-            job_status: isTerminalStatus(latest.job_status) ? latest.job_status : 'CANCELLED',
-          }
+
+        await new Promise<void>(
+          (resolve) =>
+            window.setTimeout(
+              resolve,
+              750,
+            ),
+        )
+
+        if (
+          control.stopPolling
+        ) {
+          const latest =
+            workflowLatest.get(
+              selection.runId,
+            )
+
+          const stopped: WorkflowRunResponse =
+            {
+              ...(latest ?? {
+                workflow_run_id:
+                  workflowRunId,
+
+                job_status:
+                  'CANCELLED',
+
+                domain_name:
+                  selection.domainName,
+
+                articles: [],
+
+                progress: null,
+              }),
+
+              job_status:
+                'CANCELLED',
+            }
+
+          workflowResults.set(
+            selection.runId,
+            stopped,
+          )
+
+          return stopped
         }
+
         try {
-          const latest = await getWorkflowRun(workflowRunId)
+          const latest =
+            await getWorkflowRun(
+              workflowRunId,
+            )
+
           misses = 0
-          notifyProgress(selection.runId, latest)
-          if (isTerminalStatus(latest.job_status)) {
-            workflowResults.set(selection.runId, latest)
+
+          notifyProgress(
+            selection.runId,
+            latest,
+          )
+
+          if (
+            isTerminalStatus(
+              latest.job_status,
+            )
+          ) {
+            workflowResults.set(
+              selection.runId,
+              latest,
+            )
+
             return latest
           }
         } catch (error) {
           misses += 1
+
           if (misses >= 8) {
             throw error
           }
         }
       }
-    })
-    .catch((error) => {
-      workflowRuns.delete(selection.runId)
-      throw error
-    })
+    })()
 
-  workflowRuns.set(selection.runId, request)
+  workflowRuns.set(
+    selection.runId,
+    request,
+  )
+
   return request
 }
 
+/* -------------------------------------------------------------------------- */
+/* Start a brand-new workflow                                                  */
+/* -------------------------------------------------------------------------- */
+
+function ensureWorkflowRequest(
+  selection: SourcesSelection,
+) {
+  const existing =
+    workflowRuns.get(
+      selection.runId,
+    )
+
+  if (existing) {
+    return existing
+  }
+
+  /*
+   * If we already have a backend workflow ID,
+   * NEVER create another workflow.
+   *
+   * This is what makes logout/login safe.
+   */
+  if (
+    selection.workflowRunId &&
+    selection.searchStatus !==
+      'CANCELLED'
+  ) {
+    const control =
+      getControl(
+        selection.runId,
+      )
+
+    control.stopPolling = false
+
+    return pollExistingWorkflow(
+      selection,
+      selection.workflowRunId,
+    )
+  }
+
+  const control =
+    getControl(selection.runId)
+
+  control.stopPolling = false
+
+  /*
+   * Create the backend workflow.
+   */
+  const request =
+    apiFetch<WorkflowRunResponse>(
+      '/processing/run',
+      {
+        method: 'POST',
+
+        body: JSON.stringify({
+          domain_id:
+            selection.domainId,
+
+          subdomain_ids:
+            selection.subdomainIds,
+        }),
+      },
+    )
+      .then(
+        async (started) => {
+          const workflowRunId =
+            started.workflow_run_id
+
+          control.workflowRunId =
+            workflowRunId
+
+          /*
+           * Persist the real backend ID
+           * immediately.
+           */
+          updateSourcesSelectionStatus(
+            selection.runId,
+            started.job_status as SourcesSelection['searchStatus'],
+            workflowRunId,
+          )
+
+          /*
+           * Resolve the Stop race.
+           */
+          control.resolveStarted(
+            workflowRunId,
+          )
+
+          notifyProgress(
+            selection.runId,
+            started,
+          )
+
+          if (
+            !workflowRunId ||
+            isTerminalStatus(
+              started.job_status,
+            )
+          ) {
+            workflowResults.set(
+              selection.runId,
+              started,
+            )
+
+            return started
+          }
+
+          let misses = 0
+
+          for (;;) {
+            if (
+              control.stopPolling
+            ) {
+              const latest =
+                workflowLatest.get(
+                  selection.runId,
+                ) ?? started
+
+              const stopped: WorkflowRunResponse =
+                {
+                  ...latest,
+
+                  job_status:
+                    'CANCELLED',
+                }
+
+              workflowResults.set(
+                selection.runId,
+                stopped,
+              )
+
+              updateSourcesSelectionStatus(
+                selection.runId,
+                'CANCELLED',
+                workflowRunId,
+              )
+
+              return stopped
+            }
+
+            await new Promise<void>(
+              (resolve) =>
+                window.setTimeout(
+                  resolve,
+                  750,
+                ),
+            )
+
+            if (
+              control.stopPolling
+            ) {
+              const latest =
+                workflowLatest.get(
+                  selection.runId,
+                ) ?? started
+
+              const stopped: WorkflowRunResponse =
+                {
+                  ...latest,
+
+                  job_status:
+                    'CANCELLED',
+                }
+
+              workflowResults.set(
+                selection.runId,
+                stopped,
+              )
+
+              updateSourcesSelectionStatus(
+                selection.runId,
+                'CANCELLED',
+                workflowRunId,
+              )
+
+              return stopped
+            }
+
+            try {
+              const latest =
+                await getWorkflowRun(
+                  workflowRunId,
+                )
+
+              misses = 0
+
+              notifyProgress(
+                selection.runId,
+                latest,
+              )
+
+              if (
+                isTerminalStatus(
+                  latest.job_status,
+                )
+              ) {
+                workflowResults.set(
+                  selection.runId,
+                  latest,
+                )
+
+                return latest
+              }
+            } catch (error) {
+              misses += 1
+
+              if (misses >= 8) {
+                throw error
+              }
+            }
+          }
+        },
+      )
+      .catch((error) => {
+        control.resolveStarted(
+          control.workflowRunId,
+        )
+
+        workflowRuns.delete(
+          selection.runId,
+        )
+
+        throw error
+      })
+
+  workflowRuns.set(
+    selection.runId,
+    request,
+  )
+
+  return request
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public workflow functions                                                   */
+/* -------------------------------------------------------------------------- */
+
 export function runSourcesWorkflow(
   selection: SourcesSelection,
-  onProgress?: (result: WorkflowRunResponse) => void,
+  onProgress?: (
+    result: WorkflowRunResponse,
+  ) => void,
 ) {
-  rememberSourcesSelection(selection)
-  clearLeaveCancel(selection.runId)
-  const stop = onProgress ? subscribeProgress(selection.runId, onProgress) : () => undefined
-  const request = ensureWorkflowRequest(selection)
-  return Object.assign(request, { stop })
+  rememberSourcesSelection(
+    selection,
+  )
+
+  /*
+   * Navigation does NOT cancel the workflow.
+   */
+  const stop = onProgress
+    ? subscribeProgress(
+        selection.runId,
+        onProgress,
+      )
+    : () => undefined
+
+  const request =
+    ensureWorkflowRequest(
+      selection,
+    )
+
+  return Object.assign(
+    request,
+    { stop },
+  )
 }
 
-export function stopSourcesPolling(clientRunId: string) {
-  getControl(clientRunId).stopPolling = true
+export function stopSourcesPolling(
+  clientRunId: string,
+) {
+  getControl(
+    clientRunId,
+  ).stopPolling = true
 }
 
-export async function cancelSourcesWorkflow(clientRunId: string) {
-  stopSourcesPolling(clientRunId)
-  const control = getControl(clientRunId)
-  const workflowRunId =
-    control.workflowRunId ||
-    workflowLatest.get(clientRunId)?.workflow_run_id ||
-    workflowResults.get(clientRunId)?.workflow_run_id
+export async function cancelSourcesWorkflow(
+  clientRunId: string,
+) {
+  const control =
+    getControl(clientRunId)
+
+  /*
+   * Stop the local polling immediately.
+   */
+  control.stopPolling = true
+
+  /*
+   * Persist cancellation immediately.
+   *
+   * This is what survives logout/login.
+   */
+  updateSourcesSelectionStatus(
+    clientRunId,
+    'CANCELLED',
+    control.workflowRunId,
+  )
+
+  /*
+   * If the backend hasn't returned the ID yet,
+   * wait for it.
+   */
+  let workflowRunId =
+    control.workflowRunId
 
   if (!workflowRunId) {
-    workflowRuns.delete(clientRunId)
+    workflowRunId =
+      await control.startedPromise
+  }
+
+  workflowRunId =
+    workflowRunId ||
+    workflowLatest.get(
+      clientRunId,
+    )?.workflow_run_id ||
+    workflowResults.get(
+      clientRunId,
+    )?.workflow_run_id ||
+    getRememberedSourcesSelection()
+      ?.workflowRunId ||
+    null
+
+  /*
+   * No backend ID means there is nothing to
+   * cancel remotely, but the selection is still
+   * permanently marked CANCELLED.
+   */
+  if (!workflowRunId) {
+    const latest =
+      workflowLatest.get(
+        clientRunId,
+      )
+
+    if (latest) {
+      const stopped: WorkflowRunResponse =
+        {
+          ...latest,
+          job_status:
+            'CANCELLED',
+        }
+
+      workflowResults.set(
+        clientRunId,
+        stopped,
+      )
+
+      notifyProgress(
+        clientRunId,
+        stopped,
+      )
+
+      workflowRuns.delete(
+        clientRunId,
+      )
+
+      return stopped
+    }
+
+    workflowRuns.delete(
+      clientRunId,
+    )
+
     return null
   }
 
   try {
-    const cancelled = await cancelWorkflowRun(workflowRunId)
-    notifyProgress(clientRunId, cancelled)
-    workflowResults.set(clientRunId, cancelled)
-    return cancelled
+    const cancelled =
+      await cancelWorkflowRun(
+        workflowRunId,
+      )
+
+    const result: WorkflowRunResponse =
+      {
+        ...cancelled,
+
+        workflow_run_id:
+          workflowRunId,
+
+        job_status:
+          'CANCELLED',
+      }
+
+    notifyProgress(
+      clientRunId,
+      result,
+    )
+
+    workflowResults.set(
+      clientRunId,
+      result,
+    )
+
+    updateSourcesSelectionStatus(
+      clientRunId,
+      'CANCELLED',
+      workflowRunId,
+    )
+
+    return result
   } catch {
-    const latest = workflowLatest.get(clientRunId)
-    if (latest) {
-      const stopped = { ...latest, job_status: 'CANCELLED' }
-      notifyProgress(clientRunId, stopped)
-      workflowResults.set(clientRunId, stopped)
-      return stopped
-    }
-    return null
+    const latest =
+      workflowLatest.get(
+        clientRunId,
+      )
+
+    const stopped: WorkflowRunResponse =
+      {
+        ...(latest ?? {
+          workflow_run_id:
+            workflowRunId,
+
+          job_status:
+            'CANCELLED',
+
+          domain_name: '',
+
+          articles: [],
+
+          progress: null,
+        }),
+
+        workflow_run_id:
+          workflowRunId,
+
+        job_status:
+          'CANCELLED',
+      }
+
+    notifyProgress(
+      clientRunId,
+      stopped,
+    )
+
+    workflowResults.set(
+      clientRunId,
+      stopped,
+    )
+
+    updateSourcesSelectionStatus(
+      clientRunId,
+      'CANCELLED',
+      workflowRunId,
+    )
+
+    return stopped
   } finally {
-    workflowRuns.delete(clientRunId)
+    workflowRuns.delete(
+      clientRunId,
+    )
   }
 }
 
-export function clearLeaveCancel(clientRunId: string) {
-  const timer = pendingLeaveCancels.get(clientRunId)
-  if (timer) {
-    window.clearTimeout(timer)
-    pendingLeaveCancels.delete(clientRunId)
-  }
-}
+/* -------------------------------------------------------------------------- */
+/* Source article formatting helpers                                           */
+/* -------------------------------------------------------------------------- */
 
-/** Delay cancel so React Strict Mode remounts don't kill a fresh run. */
-export function scheduleCancelOnLeave(clientRunId: string) {
-  clearLeaveCancel(clientRunId)
-  const timer = window.setTimeout(() => {
-    pendingLeaveCancels.delete(clientRunId)
-    void cancelSourcesWorkflow(clientRunId)
-  }, 600)
-  pendingLeaveCancels.set(clientRunId, timer)
-}
-
-export function formatPublishedAt(value?: string | null) {
+export function formatPublishedAt(
+  value?: string | null,
+) {
   if (!value) {
-    return null
+    return ''
   }
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return null
+  try {
+    return new Intl.DateTimeFormat(
+      undefined,
+      {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      },
+    ).format(new Date(value))
+  } catch {
+    return value
   }
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
-export function splitContentParagraphs(content: string) {
-  const blocks = content
-    .split(/\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean)
+export function splitContentParagraphs(
+  content: string,
+) {
+  if (!content) {
+    return []
+  }
 
-  return blocks.length ? blocks : []
+  return content
+    .split(/\n\s*\n/)
+    .map(
+      (paragraph) =>
+        paragraph.trim(),
+    )
+    .filter(Boolean)
 }
