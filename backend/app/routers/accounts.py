@@ -462,6 +462,7 @@ async def bluesky_callback(
                 provider_handle=provider_handle,
                 oauth_endpoint=oauth_session.issuer,
                 scopes=token_data.get("scope"),
+                drop_private_key_pem=oauth_session.dpop_private_key_pem
             )
 
         except Exception as exc:

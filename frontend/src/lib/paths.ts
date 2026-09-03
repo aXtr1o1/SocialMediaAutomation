@@ -10,6 +10,7 @@ export const paths = {
   sources: '/sources',
   generations: '/generations',
   generationsCompose: '/generations/compose',
+  publications: '/publication',
   publicationHistory: '/publication-history',
   profile: '/profile',
 } as const

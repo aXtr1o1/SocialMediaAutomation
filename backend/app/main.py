@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
-from app.routers import auth, sources, accounts, processing, generations
+from app.routers import auth, sources, accounts, processing, generations, publications
 
 
 settings = get_settings()
@@ -15,7 +15,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url.rstrip("/")],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,4 +76,10 @@ app.include_router(
     generations.router,
     prefix="/generations",
     tags=["Generations"],
+)
+
+app.include_router(
+    publications.router,
+    prefix="/publications",
+    tags=["Publications"],
 )
