@@ -28,8 +28,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "1.0.0"
 
-    frontend_url: str = "http://127.0.0.1:3000"
-
+    frontend_url: str 
     secret_key: SecretStr
 
     # Dedicated Fernet key for OAuth token encryption (url-safe base64, 32 bytes).
