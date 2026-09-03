@@ -18,3 +18,5 @@ scrapy==2.13.3
 playwright==1.55.0
 
 pytest==9.1.1
+
+redis==6.4.0
