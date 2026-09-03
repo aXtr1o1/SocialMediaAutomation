@@ -17,7 +17,7 @@ router = APIRouter()
 @router.post("", response_model=PublicationResponse)
 async def publish_post( payload: PublicationCreate, current_user=Depends(get_authenticated_supabase_user)):
 
-    user_id = UUID(str(current_user["id"]))
+    user_id = UUID(str(current_user.id))
 
     try: 
         return await PublicationServices().publish(
@@ -50,3 +50,9 @@ async def publish_multiple_posts(publications: list[PublicationCreate],current_u
     return PublicationListResponse(
         publications=results
     )
+
+@router.get("", response_model=PublicationListResponse)
+async def get_publications(current_user=Depends(get_authenticated_supabase_user)) -> PublicationListResponse:
+    user_id = UUID(str(current_user.id))
+    results = PublicationServices().get_publications(user_id=user_id)
+    return PublicationListResponse(publications=results)

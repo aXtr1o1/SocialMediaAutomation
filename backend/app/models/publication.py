@@ -16,6 +16,7 @@ class PublicationResponse(BaseModel):
     status_name: str
     user_id: UUID
     platform_id: UUID
+    platform_name: str
     connected_account_id: UUID
     platform_post_id: str | None=None
     platform_response: str | None=None
@@ -24,6 +25,8 @@ class PublicationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None=None
+    full_message: str | None=None
+
 
 class PublicationEventResponse(BaseModel):
     id: UUID
