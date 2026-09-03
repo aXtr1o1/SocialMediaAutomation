@@ -473,14 +473,13 @@ class PublicationServices:
             )
         return response.data[0]
 
-    def _mark_publication_failed(self, *, publication_id: UUID, error_message: str) -> dict[str, Any]:
+    def _mark_publication_failed(self, *, publication_id: UUID, error_message: str) -> None:
         self._update_publication(
             publication_id=publication_id,
             values={
                 "status_id": str(self._get_status_id("failed")),
                 "error_message": error_message,
-                "updated_at": self._now(),
-            }
+            },
         )
         self._create_event(
             publication_id=publication_id,
