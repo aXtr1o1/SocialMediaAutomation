@@ -3,7 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
-from app.routers import auth, sources, accounts, processing, generations, workflow
+
+from app.routers import (
+    auth,
+    sources,
+    accounts,
+    processing,
+    generations,
+    workflow,
+    publications,
+)
 
 import logging
 
@@ -19,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url.rstrip("/")],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,4 +95,10 @@ app.include_router(
     workflow.router,
     prefix="/workflow",
     tags=["Workflow"],
+)
+
+app.include_router(
+    publications.router,
+    prefix="/publications",
+    tags=["Publications"],
 )

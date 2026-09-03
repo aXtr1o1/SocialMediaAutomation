@@ -267,6 +267,7 @@ export function ReviewGenerationsPage() {
         <button
           type="button"
           className="flex h-12 items-center justify-center rounded-full bg-primary px-xl font-semibold text-on-primary shadow-md shadow-primary/20 transition-colors hover:bg-primary/90"
+          onClick={() => {navigate(paths.publications, {state: review})}}
         >
           <span className="font-label-md text-label-md">
             Approve & Continue
