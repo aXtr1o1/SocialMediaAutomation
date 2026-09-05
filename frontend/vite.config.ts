@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
 
       proxy: {
         '/api': {
-          target: env.VITE_API_URL,
+          target: env.VITE_API_URL || 'http://127.0.0.1:8000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
@@ -27,5 +27,9 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
     },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+    }
   }
 })

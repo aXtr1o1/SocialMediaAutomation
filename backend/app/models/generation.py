@@ -107,3 +107,21 @@ class AddVersionRequest(BaseModel):
 
 class SetCurrentVersionRequest(BaseModel):
     version_id: UUID
+
+class GenerationJobResponse(BaseModel):
+    generation_id: str
+    article_id: str
+    status: Literal[
+        "QUEUED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "CANCELLED",
+    ]
+    posts: list[GeneratedPost] = Field(
+        default_factory=list
+    )
+    drafts: list[GenerationDraft] = Field(
+        default_factory=list
+    )
+    error: str | None = None

@@ -3,7 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
-from app.routers import auth, sources, accounts, processing, generations
+
+from app.routers import (
+    auth,
+    sources,
+    accounts,
+    processing,
+    generations,
+    workflow,
+    publications,
+)
+
+import logging
+
+logging.getLogger("uvicorn.access").disabled = True
 
 
 settings = get_settings()
@@ -76,4 +89,16 @@ app.include_router(
     generations.router,
     prefix="/generations",
     tags=["Generations"],
+)
+
+app.include_router(
+    workflow.router,
+    prefix="/workflow",
+    tags=["Workflow"],
+)
+
+app.include_router(
+    publications.router,
+    prefix="/publications",
+    tags=["Publications"],
 )

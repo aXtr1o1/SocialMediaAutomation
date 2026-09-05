@@ -17,11 +17,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.core.config import get_settings
 
-# Must stay in sync with oauth_pending_states expires_at TTL.
-OAUTH_SESSION_TTL_MINUTES = 15
-OAUTH_SESSION_TTL_SECONDS = OAUTH_SESSION_TTL_MINUTES * 60
-
-
 @dataclass
 class BlueskyOAuthSession:
     """
@@ -65,17 +60,17 @@ class BlueskyService:
         self.client_id = self.settings.bluesky_client_id
         self.redirect_uri = self.settings.bluesky_redirect_uri
 
-        self.scope = getattr(
-            self.settings,
-            "bluesky_oauth_scope",
-            "atproto",
+        self.scope = self.settings.bluesky_oauth_scope or "atproto"
+
+        self.oauth_session_ttl_seconds = (
+            self.settings.bluesky_oauth_session_ttl_minutes * 60
         )
 
         self.timeout = httpx.Timeout(
-            connect=10.0,
-            read=20.0,
-            write=20.0,
-            pool=20.0,
+            connect=self.settings.bluesky_connect_timeout,
+            read=self.settings.bluesky_read_timeout,
+            write=self.settings.bluesky_write_timeout,
+            pool=self.settings.bluesky_pool_timeout,
         )
 
     # =========================================================
@@ -611,7 +606,7 @@ class BlueskyService:
         if not session.created_at:
             return True
         age_seconds = int(time.time()) - int(session.created_at)
-        return age_seconds < 0 or age_seconds > OAUTH_SESSION_TTL_SECONDS
+        return age_seconds < 0 or age_seconds > self.oauth_session_ttl_seconds
 
     async def exchange_code(
         self,
@@ -774,4 +769,177 @@ class BlueskyService:
             "did": did,
             "handle": user_info.get("handle"),
             "display_name": user_info.get("displayName"),
+        }
+
+
+    async def _get_pds_url(self, did: str) -> str:
+        if not did:
+            raise ValueError("DID is required to get PDS URL.")
+
+        if did.startswith("did:plc:"):
+            did_document_url = ("https://plc.directory/" + did )
+        elif did.startswith("did:web:"):
+            domain = did[len("did:web:"):]
+
+            if not domain:
+                raise ValueError(
+                    "Invalid did:web identifier."
+                )
+            did_document_url = (
+                f"https://{domain}/.well-known/did.json"
+            )
+
+        else:
+            raise ValueError("Unsupported DID format.")
+
+        # Fetch the DID document to get the PDS URL
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=False,
+        ) as client:
+            response = await client.get(did_document_url)
+
+        if response.status_code >= 400:
+            raise RuntimeError(
+                "Failed to resolve Bluesky DID document: "
+                f"{response.status_code} - "
+                f"{response.text}"
+            )
+
+        did_document = response.json()
+
+        services =  did_document.get("service", [])
+
+        for service in services:
+            if not isinstance(service, dict):
+                continue
+
+            service_type = service.get("type")
+            service_id = service.get("id")
+            service_endpoint = service.get("serviceEndpoint")
+
+            if (
+                service_type == "AtprotoPersonalDataServer"
+                and (
+                    service_id == "#atproto_pds"
+                    or service_id == f"{did}#atproto_pds"
+                )
+                and isinstance(
+                    service_endpoint,
+                    str,
+                )
+                and service_endpoint
+            ):
+                self._require_https_url(
+                    service_endpoint,
+                    "Bluesky PDS endpoint",
+                )
+
+                return service_endpoint.rstrip("/")
+
+            raise RuntimeError(
+                "Bluesky DID document does not contain a valid "
+            )
+
+
+    async def publish_post(self, *, access_token: str, dpop_private_key_pem: str, repo: str, content: str) -> dict[str, Any]:
+        if not access_token:
+            raise ValueError("Access token is required for publishing a post.")
+
+        if not repo:
+            raise ValueError("Repository (repo) is required for publishing a post.")
+
+        if not content or not content.strip():
+            raise ValueError("Content is required for publishing a post.")
+
+        if not dpop_private_key_pem:
+            raise ValueError("DPoP private key PEM is required for publishing a post.")
+
+        pds_url = await self._get_pds_url(
+            repo
+        )
+
+        endpoint = (
+            pds_url
+            + "/xrpc/com.atproto.repo.createRecord"
+        )
+
+        record = {
+            "$type": "app.bsky.feed.post",
+            "text": content.strip(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+        payload = {
+            "repo": repo,
+            "collection": "app.bsky.feed.post",
+            "record": record,
+        }
+
+        dpop_proof = self._create_dpop_proof(
+            private_key_pem=dpop_private_key_pem,
+            method="POST",
+            url=endpoint,
+            access_token=access_token,
+        )
+
+        header = {
+            "Authorization": f"DPoP {access_token}",
+            "Content-Type": "application/json",
+            "DPoP": dpop_proof,
+        }
+
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=False,
+        ) as client:
+            response = await client.post(
+                endpoint,
+                json=payload,
+                headers=header,
+            )
+
+            nonce = response.headers.get("DPoP-Nonce")
+
+            if (
+                response.status_code in (400, 401)
+                and nonce
+            ):
+                dpop_proof = self._create_dpop_proof(
+                    private_key_pem=dpop_private_key_pem,
+                    method="POST",
+                    url=endpoint,
+                    nonce=nonce,
+                    access_token=access_token,
+                )
+
+                header["DPoP"] = dpop_proof
+
+                response = await client.post(
+                    endpoint,
+                    json=payload,
+                    headers=header,
+                )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Failed to publish post: {response.status_code} - {response.text}"
+            )
+
+        response_data = response.json()
+
+        uri = response_data.get("uri")
+        cid = response_data.get("cid")
+
+        if not uri:
+            raise RuntimeError(
+                "Bluesky publish response did not contain 'uri'"
+            )
+
+        return {
+            "platform": "bluesky",
+            "platform_post_id": uri,
+            "uri": uri,
+            "cid": cid,
+            "status_code": response.status_code,
+            "response": response_data,
         }

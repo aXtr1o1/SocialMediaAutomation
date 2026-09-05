@@ -228,14 +228,20 @@ export async function changePassword(input: {
   currentPassword: string
   newPassword: string
   confirmPassword: string
+  signOutAllDevices: boolean
 }) {
-  const result = await apiFetch<{ message: string }>('/auth/change-password', {
+  const result = await apiFetch<{
+    message: string
+    signed_out_all_devices: boolean
+  }>('/auth/change-password', {
     method: 'POST',
     body: JSON.stringify({
       current_password: input.currentPassword,
       new_password: input.newPassword,
       confirm_password: input.confirmPassword,
+      sign_out_all_devices: input.signOutAllDevices,
     }),
   })
+
   return result
 }

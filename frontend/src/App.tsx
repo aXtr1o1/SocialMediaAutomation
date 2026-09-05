@@ -10,12 +10,13 @@ import { ConnectAccountPage } from './pages/app/ConnectAccountPage'
 import { DiscoverPage } from './pages/app/DiscoverPage'
 import { ComposePostPage } from './pages/app/ComposePostPage'
 import { ReviewGenerationsPage } from './pages/app/ReviewGenerationsPage'
-import { PlaceholderPage } from './pages/app/PlaceholderPage'
+import { PublicationHistoryPage } from './pages/app/PublicationHistoryPage'
 import { SourcesPage } from './pages/app/SourcesPage'
 import { ProfilePage } from './pages/app/ProfilePage'
 import { SignInPage } from './pages/SignInPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { PublicationPage } from './pages/app/PublicationPage'
 
 export default function App() {
   return (
@@ -62,16 +63,9 @@ export default function App() {
               <Route path={paths.sources} element={<SourcesPage />} />
               <Route path={paths.generationsCompose} element={<ComposePostPage />} />
               <Route path={paths.generations} element={<ReviewGenerationsPage />} />
+              <Route path={paths.publications} element={<PublicationPage />} />
               <Route path={paths.profile} element={<ProfilePage />} />
-              <Route
-                path={paths.publicationHistory}
-                element={
-                  <PlaceholderPage
-                    title="Publication History"
-                    description="See what has already been published from this workspace."
-                  />
-                }
-              />
+              <Route path={paths.publicationHistory} element={<PublicationHistoryPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
