@@ -9,6 +9,7 @@ from app.prompts.bluesky_post import BLUESKY_POST_PROMPT
 from app.prompts.linkedin_post import LINKEDIN_POST_PROMPT
 from app.prompts.regenerate_snippet import REGENERATE_SNIPPET_PROMPT
 from app.services.gemini_service import GeminiService
+from app.core.config import get_settings
 
 from uuid import uuid4
 
@@ -18,9 +19,7 @@ from app.services.redis_state_service import (
 
 log = logging.getLogger(__name__)
 
-CONTENT_LIMIT = 24000
-BLUESKY_CHAR_LIMIT = 300
-CONTEXT_WINDOW = 280
+
 _GENERATION_TASKS: dict[str, asyncio.Task] = {}
 
 
@@ -87,6 +86,7 @@ class GenerationService:
         self.db = get_supabase_client()
         self.gemini = GeminiService()
         self.redis = RedisStateService()
+        self.settings = get_settings()
 
     async def create(self, *, user_id: str, article_id: str, platforms: list[str]) -> dict[str, Any]:
         article = self._load_article(article_id, user_id=user_id)
@@ -155,8 +155,8 @@ class GenerationService:
         start, end = matches[0]
 
         matched = post[start:end]
-        before = post[max(0, start - CONTEXT_WINDOW):start]
-        after = post[end:end + CONTEXT_WINDOW]
+        before = post[max(0, start - self.settings.generation_context_window):start]
+        after = post[end:end + self.settings.generation_context_window]
 
         prompt = _fill(
             REGENERATE_SNIPPET_PROMPT,
@@ -466,7 +466,7 @@ class GenerationService:
             "published_at": str(meta.get("publish_date") or ""),
             "subdomain_name": subdomain_name,
             "source_url": str(meta.get("source_url") or ""),
-            "content": str(row.get("cleaned_text") or row.get("ai_ready_content") or "")[:CONTENT_LIMIT],
+            "content": str(row.get("cleaned_text") or row.get("ai_ready_content") or "")[:self.settings.content_limit],
         }
 
     def _normalize_linkedin(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -510,11 +510,11 @@ class GenerationService:
         posts = []
         for item in raw_posts[:3]:
             text = str(item.get("text") if isinstance(item, dict) else item or "").strip()
-            text = text[:BLUESKY_CHAR_LIMIT]
+            text = text[:self.settings.bluesky_char_limit]
             if text:
                 posts.append({"text": text, "char_count": len(text)})
         if not posts:
-            fallback = str(payload.get("full_post") or "").strip()[:BLUESKY_CHAR_LIMIT]
+            fallback = str(payload.get("full_post") or "").strip()[:self.settings.bluesky_char_limit]
             if fallback:
                 posts.append({"text": fallback, "char_count": len(fallback)})
         hashtags = [self._hashtag(item).lower() for item in payload.get("hashtags") or []]

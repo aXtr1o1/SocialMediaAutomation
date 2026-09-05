@@ -17,11 +17,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.core.config import get_settings
 
-# Must stay in sync with oauth_pending_states expires_at TTL.
-OAUTH_SESSION_TTL_MINUTES = 15
-OAUTH_SESSION_TTL_SECONDS = OAUTH_SESSION_TTL_MINUTES * 60
-
-
 @dataclass
 class BlueskyOAuthSession:
     """
@@ -65,17 +60,17 @@ class BlueskyService:
         self.client_id = self.settings.bluesky_client_id
         self.redirect_uri = self.settings.bluesky_redirect_uri
 
-        self.scope = getattr(
-            self.settings,
-            "bluesky_oauth_scope",
-            "atproto",
+        self.scope = self.settings.bluesky_oauth_scope or "atproto"
+
+        self.oauth_session_ttl_seconds = (
+            self.settings.bluesky_oauth_session_ttl_minutes * 60
         )
 
         self.timeout = httpx.Timeout(
-            connect=10.0,
-            read=20.0,
-            write=20.0,
-            pool=20.0,
+            connect=self.settings.bluesky_connect_timeout,
+            read=self.settings.bluesky_read_timeout,
+            write=self.settings.bluesky_write_timeout,
+            pool=self.settings.bluesky_pool_timeout,
         )
 
     # =========================================================
@@ -611,7 +606,7 @@ class BlueskyService:
         if not session.created_at:
             return True
         age_seconds = int(time.time()) - int(session.created_at)
-        return age_seconds < 0 or age_seconds > OAUTH_SESSION_TTL_SECONDS
+        return age_seconds < 0 or age_seconds > self.oauth_session_ttl_seconds
 
     async def exchange_code(
         self,

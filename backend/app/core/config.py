@@ -97,8 +97,10 @@ class Settings(BaseSettings):
     linkedin_posts_url: str = (
         "https://api.linkedin.com/rest/posts"
     )
+
     linkedin_platform_name: str = "linkedin"
 
+    linkedin_http_timeout: float = 30.0
     # -----------------------------------------------------------------------
     # Bluesky OAuth / API
     # -----------------------------------------------------------------------
@@ -117,6 +119,14 @@ class Settings(BaseSettings):
 
     bluesky_platform_name: str = "bluesky"
 
+    # OAuth session
+    bluesky_oauth_session_ttl_minutes: int = 15
+
+    # HTTP timeouts
+    bluesky_connect_timeout: float = 10.0
+    bluesky_read_timeout: float = 20.0
+    bluesky_write_timeout: float = 20.0
+    bluesky_pool_timeout: float = 20.0
     # -----------------------------------------------------------------------
     # Workflow
     # -----------------------------------------------------------------------
@@ -220,3 +230,11 @@ def get_settings() -> Settings:
     during the application lifecycle.
     """
     return Settings()
+
+# -----------------------------------------------------------------------
+# Generation
+# -----------------------------------------------------------------------
+
+content_limit: int = 24000
+bluesky_char_limit: int = 300
+generation_context_window: int = 280
