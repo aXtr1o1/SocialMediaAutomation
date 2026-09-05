@@ -109,7 +109,7 @@ class LinkedInService:
             author_urn = author_id
         else:
             author_urn = f"urn:li:person:{author_id}"
-        
+
         payload = {
             "author": author_urn,
             "commentary": content.strip(),
@@ -144,7 +144,7 @@ class LinkedInService:
         platform_post_id = response.headers.get("x-restli-id")
         if not platform_post_id:
             raise RuntimeError(
-                f"Failed to retrieve platform post ID from LinkedIn response headers."  
+                f"Failed to retrieve platform post ID from LinkedIn response headers."
             )
         return {
             "platform": self.settings.linkedin_platform_name,

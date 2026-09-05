@@ -91,7 +91,7 @@ class AccountService:
         return UUID(response.data[0]["id"])
 
     def get_status_id(
-        self, 
+        self,
         status_name: str,
     ) -> UUID:
         response = (
@@ -115,7 +115,7 @@ class AccountService:
         return UUID(response.data[0]["id"])
 
     def _attach_platforms(
-        self, 
+        self,
         accounts: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         platform_ids = [
@@ -151,7 +151,7 @@ class AccountService:
         return accounts
 
     def _public_account(
-        self, 
+        self,
         account: dict[str, Any]
     ) -> dict[str, Any]:
         public = {
@@ -273,7 +273,7 @@ class AccountService:
             "dpop_private_key_encrypted": (
                 self._encrypt_token(drop_private_key_pem)
                 if drop_private_key_pem
-                else None   
+                else None
             ),
             "updated_at": now,
             "is_enabled": should_enable,
@@ -331,8 +331,8 @@ class AccountService:
         return accounts
 
     def disconnect_account(
-        self, 
-        user_id: UUID, 
+        self,
+        user_id: UUID,
         account_id: UUID,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
@@ -359,8 +359,8 @@ class AccountService:
             )
 
     def activate_account(
-        self, 
-        user_id: UUID, 
+        self,
+        user_id: UUID,
         account_id: UUID,
     ) -> dict[str, Any]:
         response = (
@@ -446,8 +446,8 @@ class AccountService:
         return self._public_account(updated.data[0])
 
     def delete_account(
-        self, 
-        user_id: UUID, 
+        self,
+        user_id: UUID,
         account_id: UUID,
     ) -> None:
         existing = (

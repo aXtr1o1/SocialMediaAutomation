@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import time
 from typing import Annotated, Any
-from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -15,9 +13,6 @@ bearer_scheme = HTTPBearer(
     auto_error=False,
 )
 
-_TOKEN_CACHE: dict[str, tuple[float, object]] = {}
-_TOKEN_TTL_SECONDS = 120.0
-
 
 def get_access_token(
     credentials: Annotated[
@@ -25,57 +20,93 @@ def get_access_token(
         Depends(bearer_scheme),
     ],
 ) -> str:
-
-    if credentials is None:
+    if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if credentials.scheme.lower() != "bearer":
+    token = credentials.credentials.strip()
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication scheme",
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return credentials.credentials
+    return token
 
 
 def get_authenticated_supabase_user(
-    access_token: Annotated[
-        str,
-        Depends(get_access_token),
-    ],
-):
-    cached = _TOKEN_CACHE.get(access_token)
-    if cached and cached[0] > time.monotonic():
-        return cached[1]
+    access_token: Annotated[str, Depends(get_access_token)],
+) -> Any:
+    """
+    Validate the access token against Supabase on every request.
 
-    supabase = get_supabase_auth_client()
+    Do not cache successful token validation here.
+
+    A revoked access token must not remain usable for the duration of a
+    local cache TTL after a password change or global sign-out.
+    """
 
     try:
-        response = supabase.auth.get_user(access_token)
+        response = get_supabase_auth_client().auth.get_user(access_token)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired access token",
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    if response.user is None:
+    user = getattr(response, "user", None)
+
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired access token",
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+def get_authenticated_user(
+    access_token: Annotated[str, Depends(get_access_token)],
+) -> Any:
+    """
+    Return the authenticated application user/profile.
+
+    Supabase Auth remains the source of truth for authentication while
+    AuthService resolves the application's user profile.
+    """
+
+    try:
+        response = get_supabase_auth_client().auth.get_user(access_token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    auth_user = getattr(response, "user", None)
+
+    if auth_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
-        AuthService().ensure_profile(UUID(str(response.user.id)), response.user)
+        service = AuthService()
+        return service.ensure_profile(auth_user)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to create user profile",
+            detail="Unable to load authenticated user",
         ) from exc
-
-    _TOKEN_CACHE[access_token] = (time.monotonic() + _TOKEN_TTL_SECONDS, response.user)
-    return response.user

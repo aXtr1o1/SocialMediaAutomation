@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "1.0.0"
 
-    frontend_url: str 
+    frontend_url: str
     secret_key: SecretStr
 
     # Dedicated Fernet key for OAuth token encryption (url-safe base64, 32 bytes).
@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_secret_key: SecretStr
     supabase_anon_key: SecretStr = SecretStr("")
+
+    # -----------------------------------------------------------------------
+    # Redis
+    # -----------------------------------------------------------------------
+
+    redis_url: str
+
+    # Workflow state survives browser refresh/navigation and is retained
+    # even after the authentication session expires.
+    workflow_state_ttl_seconds: int = 60 * 60 * 24 * 7
+
+    # Generation jobs should not live forever.
+    generation_job_ttl_seconds: int = 60 * 60 * 24
 
     # -----------------------------------------------------------------------
     # Gemini
@@ -84,8 +97,10 @@ class Settings(BaseSettings):
     linkedin_posts_url: str = (
         "https://api.linkedin.com/rest/posts"
     )
+
     linkedin_platform_name: str = "linkedin"
 
+    linkedin_http_timeout: float = 30.0
     # -----------------------------------------------------------------------
     # Bluesky OAuth / API
     # -----------------------------------------------------------------------
@@ -104,6 +119,14 @@ class Settings(BaseSettings):
 
     bluesky_platform_name: str = "bluesky"
 
+    # OAuth session
+    bluesky_oauth_session_ttl_minutes: int = 15
+
+    # HTTP timeouts
+    bluesky_connect_timeout: float = 10.0
+    bluesky_read_timeout: float = 20.0
+    bluesky_write_timeout: float = 20.0
+    bluesky_pool_timeout: float = 20.0
     # -----------------------------------------------------------------------
     # Workflow
     # -----------------------------------------------------------------------
@@ -207,3 +230,11 @@ def get_settings() -> Settings:
     during the application lifecycle.
     """
     return Settings()
+
+# -----------------------------------------------------------------------
+# Generation
+# -----------------------------------------------------------------------
+
+content_limit: int = 24000
+bluesky_char_limit: int = 300
+generation_context_window: int = 280

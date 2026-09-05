@@ -11,27 +11,53 @@ from app.models.generation import (
     RegenerateSnippetRequest,
     RegenerateSnippetResponse,
     SetCurrentVersionRequest,
+    GenerationJobResponse
 )
-from app.services.generation_service import GenerationService
+from app.services.generation_service import (GenerationService, _GENERATION_TASKS)
+import asyncio
 
 router = APIRouter()
 
 
-@router.post("", response_model=GenerationResponse)
+@router.post(
+    "",
+    response_model=GenerationJobResponse,
+)
 async def create_generation(
     payload: GenerationCreate,
     current_user=Depends(get_authenticated_supabase_user),
 ):
+    service = GenerationService()
+
     try:
-        return await GenerationService().create(
+        job = service.create_job(
             user_id=str(current_user.id),
             article_id=str(payload.article_id),
             platforms=list(payload.platforms),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    generation_id = job["generation_id"]
+
+    task = asyncio.create_task(
+        service.run_job(generation_id)
+    )
+
+    _GENERATION_TASKS[generation_id] = task
+
+    def cleanup(done_task: asyncio.Task) -> None:
+        _GENERATION_TASKS.pop(
+            generation_id,
+            None,
+        )
+
+    task.add_done_callback(cleanup)
+
+    return job
 
 
 @router.post("/regenerate", response_model=RegenerateSnippetResponse)
@@ -124,3 +150,85 @@ def delete_generation_version(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/drafts/{draft_id}/save",
+    response_model=GenerationDraft,
+)
+def save_generation_draft(
+    draft_id: UUID,
+    payload: AddVersionRequest,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    try:
+        service = GenerationService()
+
+        service.add_version(
+            user_id=str(current_user.id),
+            draft_id=str(draft_id),
+            full_post=payload.full_post,
+            label=payload.label or "User Draft",
+            source="restore",
+            target_text=payload.target_text,
+            instruction=payload.instruction,
+            replacement_text=payload.replacement_text,
+        )
+
+        return service.get_draft(
+            user_id=str(current_user.id),
+            draft_id=str(draft_id),
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+        
+@router.get(
+    "/jobs/{generation_id}",
+    response_model=GenerationJobResponse,
+)
+def get_generation_job(
+    generation_id: str,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    job = GenerationService().redis.get_generation_job(
+        generation_id
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Generation job was not found.",
+        )
+
+    if str(job.get("user_id")) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Generation job was not found.",
+        )
+
+    return job
+
+@router.post(
+    "/jobs/{generation_id}/cancel",
+    response_model=GenerationJobResponse,
+)
+def cancel_generation_job(
+    generation_id: str,
+    current_user=Depends(get_authenticated_supabase_user),
+):
+    job = GenerationService().cancel_job(
+        generation_id,
+        str(current_user.id),
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Generation job was not found.",
+        )
+
+    return job

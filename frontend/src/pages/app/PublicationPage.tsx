@@ -67,7 +67,7 @@ export function PublicationPage() {
         if(posts.some(post => post.platform === 'bluesky')) {
             platforms.push('bluesky')
         }
-        return platforms 
+        return platforms
     },  [posts])
 
     const accountsByPlatform = useMemo(() => {
@@ -90,10 +90,10 @@ export function PublicationPage() {
         })
     }, [availablePlatforms, drafts, accountsByPlatform])
 
-    const selectedAccountIds = useMemo(() => 
+    const selectedAccountIds = useMemo(() =>
         Object.entries(selectedAccounts)
             .filter(([_, selected]) => selected)
-            .map(([accountId, _]) => accountId), 
+            .map(([accountId, _]) => accountId),
         [selectedAccounts],
     )
 
@@ -114,7 +114,7 @@ export function PublicationPage() {
         }
 
         const next: Record<string, boolean> = {}
-        
+
         for (const account of accounts) {
         if (
             account.is_enabled &&
@@ -159,7 +159,7 @@ export function PublicationPage() {
                     connected_account_id: account.id,
                 }
             }).filter((item): item is { draft_id: string; connected_account_id: string } => item !== null)
-            
+
             if (publications.length === 0) {
                 throw new Error('No valid publications to publish.')
             }

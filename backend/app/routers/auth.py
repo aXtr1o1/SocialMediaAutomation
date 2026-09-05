@@ -43,9 +43,22 @@ class ResetPasswordRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=8, max_length=128)
-    confirm_password: str = Field(min_length=8, max_length=128)
+    current_password: str = Field(
+        min_length=1,
+        max_length=128,
+    )
+
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+    confirm_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+    sign_out_all_devices: bool = False
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -274,11 +287,20 @@ def reset_password(request: ResetPasswordRequest):
 @router.post("/change-password")
 def change_password(
     request: ChangePasswordRequest,
-    auth_user=Depends(get_authenticated_supabase_user),
+    access_token: Annotated[
+        str,
+        Depends(get_access_token),
+    ],
+    auth_user=Depends(
+        get_authenticated_supabase_user
+    ),
 ):
     """
-    Change password for the signed-in user after verifying the current password.
+    Change password for the signed-in user after verifying
+    the current password.
+
     Updates Supabase Auth only (not public.users).
+    Optionally signs out all other sessions/devices.
     """
     if request.new_password != request.confirm_password:
         raise HTTPException(
@@ -292,7 +314,10 @@ def change_password(
             detail="New password must be different from the current password",
         )
 
-    email = str(getattr(auth_user, "email", "") or "").strip().lower()
+    email = str(
+        getattr(auth_user, "email", "") or ""
+    ).strip().lower()
+
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -300,6 +325,7 @@ def change_password(
         )
 
     supabase = get_supabase_auth_client()
+
     try:
         verified = supabase.auth.sign_in_with_password(
             {
@@ -322,7 +348,9 @@ def change_password(
     try:
         get_supabase_client().auth.admin.update_user_by_id(
             str(auth_user.id),
-            {"password": request.new_password},
+            {
+                "password": request.new_password,
+            },
         )
     except Exception as exc:
         raise HTTPException(
@@ -330,8 +358,31 @@ def change_password(
             detail="Could not update password. Try a different password.",
         ) from exc
 
-    return {"message": "Password updated."}
+    if request.sign_out_all_devices:
+        try:
+            supabase.auth.admin.sign_out(
+                access_token,
+                scope="global",
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Password changed, but other sessions "
+                    "could not be signed out."
+                ),
+            ) from exc
 
+    return {
+        "message": (
+            "Password updated. "
+            "All other devices were signed out."
+            if request.sign_out_all_devices
+            else "Password updated."
+        ),
+        "signed_out_all_devices":
+            request.sign_out_all_devices,
+    }
 
 # ---------------------------------------------------------
 # Current authenticated user

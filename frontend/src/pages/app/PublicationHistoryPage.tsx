@@ -36,7 +36,7 @@ export function PublicationHistoryPage() {
     void loadPublications()
   }, [])
 
-  const isLoading = loading 
+  const isLoading = loading
 
   if (isLoading) {
     return (
@@ -68,7 +68,7 @@ export function PublicationHistoryPage() {
   }
 
   if (error ) {
-    const message = error 
+    const message = error
 
     return (
       <div className="flex w-full flex-col px-lg py-xl">

@@ -8,13 +8,42 @@ export function Sidebar() {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-on-primary">
           S
         </div>
-        <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface">Social Media Automation Platform</span>
+
+        <span className="font-headline-sm text-headline-sm tracking-tight text-on-surface">
+          Social Media Automation Platform
+        </span>
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        <NavItem to={paths.discover} icon="explore" label="Discover" />
-        <NavItem to={paths.connectedAccounts} icon="link" label="Connected Accounts" />
-        <NavItem to={paths.publicationHistory} icon="history" label="Publication History" />
+        <NavItem
+          to={paths.discover}
+          icon="explore"
+          label="Discover"
+        />
+
+        <NavItem
+          to={paths.sources}
+          icon="article"
+          label="Sources"
+        />
+
+        <NavItem
+          to={paths.generations}
+          icon="auto_awesome"
+          label="Generated Content"
+        />
+
+        <NavItem
+          to={paths.connectedAccounts}
+          icon="link"
+          label="Connected Accounts"
+        />
+
+        <NavItem
+          to={paths.publicationHistory}
+          icon="history"
+          label="Publication History"
+        />
       </nav>
     </aside>
   )

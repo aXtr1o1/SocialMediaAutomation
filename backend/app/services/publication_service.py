@@ -28,7 +28,7 @@ class PublicationServices:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Generation Draft not found",
             )
-        
+
         version_id  = draft.get("current_version_id")
 
         if not version_id:
@@ -36,7 +36,7 @@ class PublicationServices:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Generation Draft has no current version",
             )
-        
+
         version = next((
             item for item in draft.get("versions", []) if item.get("id") == str(version_id)
             ), None,
@@ -54,7 +54,7 @@ class PublicationServices:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Generation Version has no content to publish",
             )
-        
+
         account = self._get_owned_account(user_id=user_id, connected_account_id=connected_account_id)
         self._validate_connected_account(account=account)
 
@@ -64,7 +64,7 @@ class PublicationServices:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Connected account has no platform_id",
             )
-        
+
         platform_name = self._get_platform_name (platform_id=UUID(platform_id))
 
         draft_platform = str(draft.get("platform", "")).lower()
@@ -120,7 +120,7 @@ class PublicationServices:
         except Exception as e:
                     self._mark_publication_failed(publication_id=publication_id, error_message=str(e))
                     return self._get_publication(user_id=user_id, publication_id=publication_id)
-        
+
 
         paltform_post_id = platform_response.get("platform_post_id")
         self._update_publication(
@@ -145,7 +145,7 @@ class PublicationServices:
             publication_id=publication_id,
         )
 
-        
+
 
 
     async def publish_multiple(self, *, user_id: UUID, publications: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -311,7 +311,7 @@ class PublicationServices:
         return UUID(
             str(response[0]["id"])
         )
-    
+
     def _get_status_name(self, status_id: UUID) -> str:
         response = (
             self.db
@@ -381,7 +381,7 @@ class PublicationServices:
         self._update_publication(
             publication_id=publication_id,
             values={
-                "status_id": str(status_id),  
+                "status_id": str(status_id),
             }
         )
 
@@ -545,7 +545,7 @@ class PublicationServices:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Publishing to platform '{platform_name}' is not supported",
         )
-            
+
 
     @staticmethod
     def _now() -> str:

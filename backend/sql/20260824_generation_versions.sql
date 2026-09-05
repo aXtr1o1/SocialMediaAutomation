@@ -22,7 +22,7 @@ create table if not exists public.generation_versions (
   version_number int not null check (version_number > 0),
   full_post text not null,
   label text not null default '',
-  source text not null check (source in ('generate', 'regenerate')),
+  source text not null check (source in ('generate', 'regenerate', 'restore')),
   target_text text null,
   instruction text null,
   replacement_text text null,

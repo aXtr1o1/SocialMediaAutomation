@@ -19,7 +19,7 @@ async def publish_post( payload: PublicationCreate, current_user=Depends(get_aut
 
     user_id = UUID(str(current_user.id))
 
-    try: 
+    try:
         return await PublicationServices().publish(
             user_id=user_id,
             draft_id=payload.draft_id,
