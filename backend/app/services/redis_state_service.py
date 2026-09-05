@@ -10,40 +10,6 @@ from redis import Redis
 
 
 class RedisStateService:
-    """
-    Stores workflow/session state in Redis.
-
-    Redis contains transient workflow/session state while durable
-    generated content, drafts, and version history remain in the
-    database.
-
-    Important concepts:
-
-    1. User workflow state
-       workflow:<user_id>
-
-    2. Active workflow
-       Stored inside the user's workflow state as workflow_run_id.
-
-    3. Selection -> workflow mapping
-       workflow:selection:<user_id>:<domain>:<sorted_subdomains>
-
-       This allows the frontend to leave Sources and later return
-       without automatically starting a new crawl.
-
-    4. User workflow session
-       workflow:<user_id>
-
-       The workflow state and session state intentionally live in
-       the same Redis document in this implementation.
-
-    5. Active generation
-       Stored inside the workflow state as active_generation_id.
-
-    Redis is NOT the permanent source of truth for generated
-    content/version history. That information must remain in the
-    database.
-    """
 
     WORKFLOW_PREFIX = "workflow:"
     SELECTION_WORKFLOW_PREFIX = "workflow:selection:"

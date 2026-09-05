@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Redis
     # -----------------------------------------------------------------------
 
-    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_url: str
 
     # Workflow state survives browser refresh/navigation and is retained
     # even after the authentication session expires.
